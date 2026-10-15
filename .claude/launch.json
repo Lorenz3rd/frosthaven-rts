@@ -1,0 +1,9 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "game", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8123"], "port": 8123 },
+    { "name": "game-alt", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8124"], "port": 8124 },
+    { "name": "game-ai", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8125"], "port": 8125 },
+    { "name": "game-split", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8126"], "port": 8126 }
+  ]
+}

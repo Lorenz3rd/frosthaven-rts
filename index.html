@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frost RTS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="menu">
+    <canvas id="menuBg"></canvas>
+    <div class="screen" data-screen="home">
+      <h1>Frosthaven <span>RTS</span></h1>
+      <nav class="options">
+        <button type="button" data-go="single">Single Player</button>
+        <button type="button" data-go="local">Local Multiplayer</button>
+        <button type="button" data-go="net">Network Multiplayer<small>Wi-Fi or internet · up to 3 vs 3</small></button>
+        <button type="button" data-go="dev">Developer</button>
+      </nav>
+    </div>
+    <div class="screen" data-screen="local" hidden>
+      <h2>Local Multiplayer</h2>
+      <p class="hint">Each player presses Ⓐ on their Xbox controller to claim a side. ◀ ▶ to switch sides, Ⓑ to leave.</p>
+      <div class="sides">
+        <div class="side you" data-side="west">
+          <div class="label">West Army</div>
+          <div class="pad">🎮</div>
+          <div class="status"></div>
+          <select aria-label="West Army controller"></select>
+        </div>
+        <div class="vs">VS</div>
+        <div class="side enemy" data-side="east">
+          <div class="label">East Army</div>
+          <div class="pad">🎮</div>
+          <div class="status"></div>
+          <select aria-label="East Army controller"></select>
+        </div>
+      </div>
+      <p class="padCount"></p>
+      <div class="actions"><button type="button" data-back="home">Back</button><button type="button" id="toSelect" disabled>Continue</button></div>
+    </div>
+    <div class="screen" data-screen="select" hidden>
+      <h2>Choose Your Champion</h2>
+      <p class="hint" id="selectHint">▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when both are ready.</p>
+      <div class="sides">
+        <div class="pick you" data-side="west">
+          <div class="label">West Army</div>
+          <div class="who"></div>
+          <canvas class="preview" aria-label="West Army preview"></canvas>
+          <div class="row race"><span class="k">Race</span><button type="button" class="prev" aria-label="Previous race">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next race">›</button></div>
+          <div class="row hero"><span class="k">Hero</span><button type="button" class="prev" aria-label="Previous hero">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next hero">›</button></div>
+          <div class="info"><div class="stats"></div><ul class="abil"></ul></div>
+          <button type="button" class="readyBtn">Lock in</button>
+        </div>
+        <div class="vs">VS</div>
+        <div class="pick enemy" data-side="east">
+          <div class="label">East Army</div>
+          <div class="who"></div>
+          <canvas class="preview" aria-label="East Army preview"></canvas>
+          <div class="row race"><span class="k">Race</span><button type="button" class="prev" aria-label="Previous race">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next race">›</button></div>
+          <div class="row hero"><span class="k">Hero</span><button type="button" class="prev" aria-label="Previous hero">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next hero">›</button></div>
+          <div class="row diff" hidden><span class="k">CPU</span><button type="button" class="prev" aria-label="Easier">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Harder">›</button></div>
+          <div class="info"><div class="stats"></div><ul class="abil"></ul></div>
+          <button type="button" class="readyBtn">Lock in</button>
+        </div>
+      </div>
+      <div class="actions"><button type="button" id="selectBack">Back</button><button type="button" id="beginLocal" disabled>Begin Battle</button></div>
+    </div>
+    <div class="screen" data-screen="net" hidden>
+      <h2>Network Multiplayer</h2>
+      <p class="hint">Everyone plays on their own PC, on the same Wi-Fi or anywhere online. One player creates a room; the others type its name to join (pick an unusual name: anyone who knows it can join). Dropped out? Join the same room again to get your hero back.</p>
+      <div class="netForm">
+        <label><span class="k">Your name</span><input id="netName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="e.g. Caleb"></label>
+        <label><span class="k">Room name</span><input id="netRoom" maxlength="40" autocomplete="off" spellcheck="false" placeholder="e.g. frostbite"></label>
+      </div>
+      <p class="netStatus" id="netStatus" role="status"></p>
+      <div class="actions"><button type="button" data-back="home">Back</button><button type="button" id="netJoin">Join Room</button><button type="button" id="netCreate">Create Room</button></div>
+    </div>
+    <div class="screen" data-screen="lobby" hidden>
+      <h2 id="lobbyTitle">Room</h2>
+      <p class="hint" id="lobbyHint"></p>
+      <div class="sides">
+        <div class="team you" data-team="0">
+          <div class="label">West Army</div>
+          <div class="row race"><button type="button" class="prev" aria-label="Previous race">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next race">›</button></div>
+          <ol class="slots"></ol>
+          <button type="button" class="joinTeam">Join West</button>
+        </div>
+        <div class="vs">VS</div>
+        <div class="team enemy" data-team="1">
+          <div class="label">East Army</div>
+          <div class="row race"><button type="button" class="prev" aria-label="Previous race">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next race">›</button></div>
+          <ol class="slots"></ol>
+          <button type="button" class="joinTeam">Join East</button>
+        </div>
+      </div>
+      <div class="mine">
+        <canvas class="preview" aria-label="Your hero preview"></canvas>
+        <div class="body">
+          <div class="row hero"><span class="k">Your hero</span><button type="button" class="prev" aria-label="Previous hero">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next hero">›</button></div>
+          <ul class="abil"></ul>
+        </div>
+      </div>
+      <p class="netStatus" id="lobbyStatus" role="status"></p>
+      <div class="actions"><button type="button" id="lobbyLeave">Leave Room</button><button type="button" id="lobbyStart">Start Battle</button></div>
+    </div>
+  </div>
+  <canvas id="game"></canvas>
+  <canvas id="overlay"></canvas>
+  <div id="splitDivider"></div>
+  <div id="vignette"></div>
+  <div id="grain"></div>
+
+  <div id="hud" class="hud">
+    <div class="bars">
+      <div class="heroName"></div>
+      <div class="bar hp"><div class="fill"></div><span></span></div>
+      <div class="bar mana"><div class="fill"></div><span></span></div>
+      <div class="gold"></div>
+    </div>
+    <div class="abilities"></div>
+  </div>
+  <div id="abilityTip" hidden></div>
+
+  <div id="minimapFrame">
+    <canvas id="minimap"></canvas>
+    <div id="minimapCounts"></div>
+  </div>
+
+
+  <div id="commandBars">
+    <div class="cc you"><span class="label">Your Command</span><div class="bar"><div class="fill"></div><span></span></div></div>
+    <div class="cc enemy"><span class="label">Enemy Command</span><div class="bar"><div class="fill"></div><span></span></div><span class="cpu" id="cpuInfo" hidden></span></div>
+  </div>
+
+  <button type="button" id="pauseBtn" aria-label="Pause">❚❚</button>
+  <div id="devBadge">Developer mode</div>
+
+  <div id="pauseMenu" hidden>
+    <div class="panel">
+      <div class="result">Paused</div>
+      <button type="button" data-act="resume">Resume</button>
+      <button type="button" data-act="dev"></button>
+      <button type="button" data-act="controls"></button>
+      <button type="button" data-act="confirm"></button>
+      <button type="button" data-act="leave" hidden>Leave game</button>
+      <div class="padState"></div>
+      <div class="help"></div>
+    </div>
+  </div>
+
+  <div id="gameOver" hidden>
+    <div class="panel">
+      <div class="result"></div>
+      <div class="detail"></div>
+      <button type="button">Play again</button>
+    </div>
+  </div>
+
+  <!-- Classic scripts (not modules) so the game runs straight from file:// -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- PeerJS: finds network rooms by name (game traffic then goes straight between the PCs, or via a relay) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/economy.js"></script>
+  <script src="js/races.js"></script>
+  <script src="js/bases.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/squads.js"></script>
+  <script src="js/towers.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/heroes.js"></script>
+  <script src="js/castpreview.js"></script>
+  <script src="js/hud.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/buildmenu.js"></script>
+  <script src="js/minimap.js"></script>
+  <script src="js/models/kit.js"></script>
+  <script src="js/render3d.js"></script>
+  <script src="js/models/fx3d.js"></script>
+  <script src="js/models/heroes3d.js"></script>
+  <script src="js/models/algox.js"></script>
+  <script src="js/models/lurker.js"></script>
+  <script src="js/models/unfettered.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/netconfig.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/menu.js"></script>
+</body>
+</html>
