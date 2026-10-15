@@ -23,11 +23,30 @@
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
   const BARRACKS = [
-    { type: 'barracks', name: 'Infantry', icon: '⚔', hotkey: '1' },
-    { type: 'barracksArmored', name: 'Armored', icon: '⛨', hotkey: '2' },
-    { type: 'barracksShort', name: 'Short-ranged', icon: '➶', hotkey: '3' },
-    { type: 'barracksLong', name: 'Long-range', icon: '➹', hotkey: '4' },
+    { page: 'infantry', name: 'Infantry', icon: '⚔', hotkey: '1' },
+    { page: 'ranged', name: 'Ranged', icon: '➹', hotkey: '2' },
+    { page: 'mobile', name: 'Mobile', icon: '♞', hotkey: '3' },
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
+  ];
+  // Troop pages: each entry is a barracks, listed by the troops it trains. Back returns to Barracks.
+  const INFANTRY = [
+    { type: 'barracks', icon: '⚔', hotkey: '1' },
+    { type: 'barracksSpear', icon: '↟', hotkey: '2' },
+    { type: 'barracksElite', icon: '✦', hotkey: '3' },
+    { type: 'barracksArmored', icon: '⛨', hotkey: '4' },
+    { back: 'barracks', name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
+  ];
+  const RANGED = [
+    { type: 'barracksShort', icon: '➶', hotkey: '1' },
+    { type: 'barracksLong', icon: '➹', hotkey: '2' },
+    { type: 'barracksCaster', icon: '✺', hotkey: '3' },
+    { back: 'barracks', name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
+  ];
+  const MOBILE = [
+    { type: 'barracksCreature', icon: '🐾', hotkey: '1' },
+    { type: 'barracksMounted', icon: '♞', hotkey: '2' },
+    { type: 'barracksWarMachine', icon: '⚙', hotkey: '3' },
+    { back: 'barracks', name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
   const ALLIES = [
     { type: 'allyEngineer', name: 'Engineer', icon: '⚒', hotkey: '1' },
@@ -36,7 +55,8 @@
     { type: 'allyDemolitionist', name: 'Demolitionist', icon: '✹', hotkey: '4' },
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
-  const PAGES = { tower: { list: TOWER, title: 'Tower' }, barracks: { list: BARRACKS, title: 'Barracks' }, allies: { list: ALLIES, title: 'Allies' } };
+  const PAGES = { tower: { list: TOWER, title: 'Tower' }, barracks: { list: BARRACKS, title: 'Barracks' }, allies: { list: ALLIES, title: 'Allies' },
+    infantry: { list: INFANTRY, title: 'Infantry' }, ranged: { list: RANGED, title: 'Ranged' }, mobile: { list: MOBILE, title: 'Mobile' } };
   // Opened by left-clicking one of the hero's own buildings.
   const DEMOLISH = [
     { action: 'destroy', name: 'Destroy', icon: '⚒', hotkey: '1' },
@@ -69,10 +89,13 @@
       const other = hero.team === G.TEAM.PLAYER ? G.TEAM.ENEMY : G.TEAM.PLAYER;
       const title = main ? 'Build' : forEnemy ? pageTitle + ' (enemy)' : pageTitle;
       el.innerHTML = `<div class="title${!main && forEnemy ? ' enemy' : ''}">${title}</div>` + list.map((o, i) => {
-        // Buildings are named by the race that would own them; barracks also show the unit they train.
+        // Buildings are named by the race that would own them; allies also show the unit they train.
+        // Troop barracks are listed by their troops, with squad size and strengths underneath.
         const team = o.enemy || forEnemy ? other : hero.team;
-        const squad = o.type && G.BUILDINGS[o.type].squad;
-        const name = (o.type ? G.buildingName(o.type, team) : o.name) + (squad ? `<small>${G.unitName(squad, team)}</small>` : '');
+        const squad = o.type && G.BUILDINGS[o.type].squad, k = squad && G.SQUAD_KINDS[squad];
+        const name = !squad ? (o.type ? G.buildingName(o.type, team) : o.name)
+          : k.ally ? G.buildingName(o.type, team) + `<small>${G.unitName(squad)}</small>`
+            : G.unitName(squad) + `<small>${[k.cols * k.rows + ' per squad', ...G.strengthText(squad)].join(' · ')}</small>`;
         const header = o.enemy && !list[i - 1].enemy ? '<div class="title enemy">Test: enemy</div>' : '';
         const cls = (i === sel && player.scheme === 'pad' ? 'sel ' : '') + (o.enemy || (forEnemy && o.type) ? 'enemy' : '') + (o.back ? ' back' : '');
         return header + `<button data-i="${i}" class="${cls}"${o.disabled ? ' disabled title="Coming later"' : ''}><span class="icon">${o.icon}</span>` +
@@ -132,8 +155,9 @@
           return;
         }
         if (!pending || opt.disabled) return;
-        if (opt.page) { const pg = PAGES[opt.page]; show(pg.list, !!opt.enemy, pg.title); return; }
-        if (opt.back) { show(MAIN, false); return; }
+        // Sub-pages keep building for whichever side the page was opened for.
+        if (opt.page) { const pg = PAGES[opt.page]; show(pg.list, !!opt.enemy || enemy, pg.title); return; }
+        if (opt.back) { const pg = PAGES[opt.back]; if (pg) show(pg.list, enemy, pg.title); else show(MAIN, false); return; }
         const other = hero.team === G.TEAM.PLAYER ? G.TEAM.ENEMY : G.TEAM.PLAYER;
         player.act.build(pending, opt.type, opt.enemy || enemy ? other : hero.team);
         menu.close();
@@ -151,7 +175,7 @@
         const d = player.pad.down, B = G.PAD_BTN;
         if (player.scheme !== 'pad') return;
         if (d[B.LB]) { menu.close(); return; }
-        if (d[B.B]) { const back = options.find(o => o.back); if (back && options.some(o => o.back) && !options.some(o => o.page)) menu.choose(back); else menu.close(); return; }
+        if (d[B.B]) { const back = options.find(o => o.back); if (back) menu.choose(back); else menu.close(); return; }
         const dy = (d[B.DOWN] ? 1 : 0) - (d[B.UP] ? 1 : 0) || stickStep();
         if (dy) {
           sel = (sel + dy + options.length) % options.length;

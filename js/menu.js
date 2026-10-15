@@ -518,7 +518,7 @@
       const kinds = heroId ? ['infantry', 'armored'] : ['armored', 'long', 'infantry'];
       spots.forEach(([x, z], i) => {
         const kind = kinds[i];
-        const m = models.unit(v.team, kind, G.SQUAD_KINDS[kind].range > 40);
+        const m = models.unit(v.team, kind, G.isRangedKind(kind));
         m.position.set(x, 0, z);
         m.rotation.y = -Math.PI / 2 + 0.35;
         if (!heroId) m.scale.multiplyScalar(1.6);

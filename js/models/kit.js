@@ -217,6 +217,23 @@
     return g;
   };
 
+  // Four legs hung from hip pivots, front pair at +dx: build(pivot, sx, sz) fills each one in.
+  // Returned in diagonal pairs ([front-left, back-right, front-right, back-left]) for K.gait.
+  K.legs4 = function (parent, dx, hipY, dz, build) {
+    return [[1, 1], [-1, -1], [1, -1], [-1, 1]].map(([sx, sz]) => {
+      const p = K.pivot(parent, sx * dx, hipY, sz * dz);
+      build(p, sx, sz);
+      return p;
+    });
+  };
+  // Trot or gallop: diagonal pairs swing opposite each other while the unit moves.
+  K.gait = function (legs, e, time, phase, rate = 14, amp = 0.55) {
+    const s = e.moving ? Math.sin(time * rate + phase) * amp : 0;
+    legs[0].rotation.z = legs[1].rotation.z = s;
+    legs[2].rotation.z = legs[3].rotation.z = -s;
+    return s;
+  };
+
   // Small team flag on a pole at (x, y, z): a common tag on every building.
   K.teamFlag = function (team, x, y, z) {
     const flag = new THREE.Mesh(K.g.plane(34, 22), K.m(K.teamHex(team), { side: THREE.DoubleSide }));

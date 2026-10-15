@@ -49,7 +49,9 @@
     drifter: { q: { use: 'self', radius: 140 }, w: { use: 'dash', range: 360 }, e: { use: 'zone', radius: 200 }, r: { use: 'line', range: 1000, width: 240 } }
   };
 
-  const BARRACKS = ['barracks', 'barracksLong', 'barracksArmored', 'barracksShort'];
+  // Troop barracks, in the order the late game cycles through them.
+  const BARRACKS = ['barracks', 'barracksLong', 'barracksArmored', 'barracksShort', 'barracksSpear', 'barracksMounted',
+    'barracksCaster', 'barracksCreature', 'barracksElite', 'barracksWarMachine'];
   const ENGAGE = 750;          // picks a fight with a hero this close (further when it raids our bases)
   const SKIRMISH = 750;        // hunts enemy soldiers this close
   const ARMY = 5;              // soldiers near the hero that make a push worthwhile
@@ -74,7 +76,7 @@
     if (e instanceof G.Hero) return 5;
     if (isSoldier(e)) {
       const k = G.SQUAD_KINDS[e.kind];
-      return e.kind === 'colossus' ? 4 : k.ally ? 2 : e.kind === 'armored' ? 1.5 : 1;
+      return e.kind === 'colossus' || e.kind === 'warMachine' ? 4 : k.ally ? 2 : e.kind === 'armored' || e.kind === 'mounted' ? 1.5 : 1;
     }
     if (e instanceof G.Entity) return 0;  // training beasts
     return 0.4;                           // buildings
@@ -254,7 +256,7 @@
     if (c('siege') < 1) return 'siege';
     if (damaged && c('allyEngineer') < 1) return 'allyEngineer';
     // From here on: alternate more troops and more towers.
-    return troops <= towers ? BARRACKS[troops % 4] : ['support', 'digin', 'siege'][towers % 3];
+    return troops <= towers ? BARRACKS[troops % BARRACKS.length] : ['support', 'digin', 'siege'][towers % 3];
   }
 
   // The base and slot for a new building: bases we hold before new ground, closest to the enemy first,

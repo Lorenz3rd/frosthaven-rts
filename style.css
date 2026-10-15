@@ -208,6 +208,7 @@ html, body {
 }
 .buildMenu .icon { width: 18px; text-align: center; color: #bfe3ff; }
 .buildMenu .name { flex: 1; }
+.buildMenu .name small { display: block; max-width: 230px; margin-top: 2px; font-size: 11px; line-height: 1.3; color: #a99a82; }
 .buildMenu .cost { font-size: 11px; color: #ffcf4a; margin-right: 8px; }
 .buildMenu .hotkey { font-size: 11px; color: var(--bronze-hi); }
 .buildMenu .title.enemy { margin-top: 10px; color: #e0624f; }

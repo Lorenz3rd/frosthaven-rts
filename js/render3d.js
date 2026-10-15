@@ -801,7 +801,8 @@
   // Buildings of one type are built identically (only the root is placed in its slot), so they share
   // their merged geometry, which lets the instancer (batchModels) draw them all together.
   function buildingModel(slot, base, b) {
-    const fn = raceModels(b.team).buildings[b.type] || BUILDING_MODELS[b.type];
+    const look = G.BUILDINGS[b.type].look || b.type;
+    const fn = raceModels(b.team).buildings[look] || BUILDING_MODELS[look];
     const m = fn(slot, base, b.team);
     const key = 'building:' + G.raceOf(b.team) + ':' + b.type + ':' + b.team;
     return G.kit.mergeStatic(m, animatedParts(m, b), { pieces: true, cacheKey: key });
@@ -952,7 +953,8 @@
   // Armored: a bigger, plated footman. Ranged kinds trade sword and shield for a bow.
   const soldierGeo = {};
   function makeSoldier(team, kind, ranged) {
-    const G3 = soldierGeo;
+    if (HUMAN_BEASTS[kind]) return HUMAN_BEASTS[kind](team);
+    const G3 = soldierGeo, K = G.kit;
     if (!G3.body) {
       G3.body = new THREE.CylinderGeometry(7, 10, 26, 7);
       G3.head = new THREE.SphereGeometry(6, 7, 5);
@@ -983,6 +985,14 @@
       tube.position.set(4, 38, -9);
       const tip = new THREE.Mesh(new THREE.ConeGeometry(3.5, 6, 6).rotateZ(-Math.PI / 2), mat(0x8c3a22)); tip.position.set(23, 38, -9);
       g.add(shadowed(tube), shadowed(tip));
+    } else if (kind === 'caster') {
+      // Battle-mage: a hooded robe to the ground and a staff crowned with a burning orb.
+      K.add(g, K.g.cone(12, 28, 8), tunic, 0, 14, 0);
+      helm.material = K.m(0x3a2c24); helm.scale.set(1.15, 1.6, 1.15);
+      K.add(g, K.g.box(1, 20, 6), K.m(0xd9a530), 9.5, 22, 0);
+      K.add(arm, K.g.cyl(1.2, 1.4, 50, 5), K.m(0x5a4330), 0, 14, 0);
+      K.add(arm, K.g.sph(4.2, 8, 6), K.lit(0xffc070), 0, 41, 0, { shadow: false });
+      K.addGlow(arm, 0xff9a40, 30, 0, 41, 0, 0.85);
     } else if (ranged) {
       // Bow held out front, string side toward the body; long-range archers carry a longer bow.
       const bow = new THREE.Mesh(G3.bow, mat(0x6b4a2a)); bow.rotation.z = -Math.PI / 2;
@@ -990,6 +1000,20 @@
       if (kind === 'long') bow.scale.set(1.35, 1.35, 1);
       if (kind === 'officer') bow.scale.set(0.75, 0.75, 1);
       g.add(shadowed(bow));
+    } else if (kind === 'spearman') {
+      // A long ash spear and the round shield.
+      K.add(arm, K.g.cyl(1.1, 1.3, 72, 5), K.m(0x6b4a2a), 0, 22, 0);
+      K.add(arm, K.g.cone(2.6, 11, 4), steel, 0, 63, 0);
+      g.add(shadowed(shield));
+    } else if (kind === 'elite') {
+      // Blademaster: a two-handed greatsword, gilded pauldrons, a team cape and a plumed helm.
+      K.add(arm, K.g.box(3.4, 42, 1.3), steel, 0, 24, 0);
+      K.add(arm, K.g.box(3, 2.4, 13), K.m(0xd9a530), 0, 3, 0);
+      K.add(arm, K.g.cyl(1.3, 1.3, 7, 5), K.m(0x3a2a1d), 0, -1, 0);
+      for (const z of [-9, 9]) K.add(g, K.g.sph(5, 7, 5), K.metal(0xd9a530, 0.3), 0, 37, z);
+      K.add(g, K.g.box(2, 28, 17), tunic, -9, 27, 0, { rz: -0.12 });
+      K.add(g, K.g.cone(2.2, 13, 5), K.m(0xc8202a), -1, 57, 0, { rz: 0.35 });
+      g.scale.setScalar(1.08);
     } else {
       const blade = new THREE.Mesh(G3.blade, steel); blade.position.y = 13;
       arm.add(blade);
@@ -1045,6 +1069,108 @@
     g.userData = { tunic, arm, l1, l2, ranged, aura, phase: Math.random() * 10 };
     return g;
   }
+
+  // ---- Human beasts and engines: war hounds, mounted knights and the war wagon. ----
+  // Same soldier contract (tunic, arm, l1, l2); they pose their own legs, heads and guns in userData.tick.
+  const HUMAN_BEASTS = {
+    // War hound: a deep-chested mastiff in a spiked team collar. Bites by dipping its head.
+    creature(team) {
+      const K = G.kit, g = new THREE.Group(), PI = Math.PI;
+      const fur = mat(0x6a5444, { emissive: 0x000000 }), dark = K.m(0x3a2e26), teamM = K.m(TEAM_HEX[team]);
+      K.add(g, K.g.sph(10, 9, 7), fur, 4, 24, 0, { sx: 1.6, sy: 0.95, sz: 0.85 });
+      K.add(g, K.g.sph(8, 8, 6), fur, -10, 23, 0, { sx: 1.2, sy: 0.85, sz: 0.85 });
+      K.add(g, K.g.torus(6.5, 1.8, 4, 10), teamM, 16, 29, 0, { ry: PI / 2, rx: 0.5 });
+      for (const z of [-4, 0, 4]) K.add(g, K.g.cone(1, 4, 4), K.m(0x8a8f96), 16, 35, z, { shadow: false });
+      K.add(g, K.g.cyl(1.2, 2.4, 15, 5), fur, -21, 27, 0, { rz: -1.0 });
+      const head = K.pivot(g, 18, 31, 0);
+      K.add(head, K.g.sph(6, 8, 6), fur, 3, 2, 0);
+      K.add(head, K.g.box(10, 5, 6), dark, 10, -0.5, 0);
+      for (const z of [-3, 3]) {
+        K.add(head, K.g.cone(2, 5, 4), dark, 0, 8, z);
+        K.add(head, K.g.sph(0.9, 4, 3), K.lit(0xffd060), 7, 4, z * 0.8, { shadow: false });
+      }
+      const legs = K.legs4(g, 9, 18, 5, p => { K.add(p, K.g.cyl(2.3, 1.6, 17, 5), dark, 0, -8.5, 0); K.add(p, K.g.sph(2.2, 5, 4), dark, 1, -17, 0); });
+      g.scale.setScalar(1.2);
+      g.userData = { tunic: fur, arm: K.pivot(g), l1: K.pivot(g), l2: K.pivot(g), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 17, 0.7); head.rotation.z = -K.ease.bump(e.swing || 0) * 0.6; } };
+      return shadowed(g);
+    },
+    // Knight: a warhorse in a team caparison; the rider couches a pennoned lance.
+    mounted(team) {
+      const K = G.kit, g = new THREE.Group(), PI = Math.PI;
+      const tunic = mat(TEAM_HEX[team], { emissive: 0x000000 }), teamM = K.m(TEAM_HEX[team]);
+      const coat = K.m(0x5a3e2a), dark = K.m(0x221a14), steel = K.metal(0x8a8f96, 0.45);
+      K.add(g, K.g.sph(12, 10, 8), coat, 0, 34, 0, { sx: 2.0, sy: 0.95, sz: 0.85 });
+      K.add(g, K.g.cyl(5, 7, 22, 6), coat, 24, 44, 0, { rz: -0.7 });
+      K.add(g, K.g.box(16, 7, 7), coat, 34, 55, 0, { rz: -0.5 });
+      K.add(g, K.g.box(8, 8, 8.4), steel, 30, 58, 0, { rz: -0.5 });   // chanfron
+      for (const z of [-2.5, 2.5]) K.add(g, K.g.cone(1.6, 5, 4), dark, 28, 63, z);
+      K.add(g, K.g.box(16, 3, 2), dark, 21, 52, 0, { rz: -0.7 });
+      K.add(g, K.g.cyl(1.5, 4, 22, 5), dark, -26, 30, 0, { rz: 0.5 });
+      K.add(g, K.g.box(34, 14, 25), teamM, -2, 33, 0);
+      K.add(g, K.g.box(13, 4, 17), dark, -2, 45, 0);
+      const legs = K.legs4(g, 15, 30, 6, p => { K.add(p, K.g.cyl(2.6, 2, 24, 5), coat, 0, -12, 0); K.add(p, K.g.box(4.5, 3, 4.5), dark, 0.5, -24, 0); });
+      // Rider.
+      K.add(g, K.g.cyl(6, 8, 20, 7), tunic, -2, 58, 0);
+      for (const s of [-1, 1]) K.add(g, K.g.cyl(2.4, 2.4, 14, 5), dark, 0, 44, s * 10, { rx: s * 0.5 });
+      K.add(g, K.g.sph(5.5, 7, 5), K.m(0xc9a487), -2, 73, 0);
+      K.add(g, K.g.cyl(5.8, 5.8, 7, 8), steel, -2, 75, 0);
+      K.add(g, K.g.cone(2, 9, 5), K.m(0xd9a530), -2, 83, 0);
+      K.add(g, K.g.cyl(8, 8, 2.4, 10), tunic, 0, 58, -10, { rx: PI / 2 });
+      // The lance rests couched forward and thrusts on a strike (see tick).
+      const lance = K.pivot(g, -2, 63, 9);
+      K.add(lance, K.g.cyl(1.1, 2.6, 82, 6), K.m(0x6b4a2a), 0, 27, 0);
+      K.add(lance, K.g.cone(3.4, 6, 8), steel, 0, -2, 0, { rx: PI });
+      K.add(lance, K.g.box(0.6, 9, 12), teamM, 0, 58, 6.5, { shadow: false });
+      lance.rotation.z = -1.3;
+      g.scale.setScalar(1.1);
+      g.userData = { tunic, arm: K.pivot(g), l1: K.pivot(g), l2: K.pivot(g), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 19, 0.8); lance.position.x = -2 + K.ease.bump(e.swing || 0) * 12; } };
+      return shadowed(g);
+    },
+    // War wagon: an iron-sided plank bed on six wheels, a bronze cannon on a turning mount and two
+    // swivel crossbows on the flanks.
+    warMachine(team) {
+      const K = G.kit, g = new THREE.Group(), PI = Math.PI;
+      const wood = mat(0x4a3424, { emissive: 0x000000 }), dark = K.m(0x221a12), iron = K.metal(0x3a3c40, 0.5);
+      const bronze = K.metal(0xb08840, 0.35), teamM = K.m(TEAM_HEX[team]);
+      K.add(g, K.g.box(110, 16, 64), wood, 0, 30, 0);
+      for (const s of [-1, 1]) {
+        K.add(g, K.g.box(112, 18, 3), iron, 0, 46, s * 33);
+        K.add(g, K.g.box(80, 5, 1), teamM, 0, 47, s * 34.8);
+      }
+      K.add(g, K.g.box(3, 22, 66), iron, 56, 46, 0);
+      K.add(g, K.g.box(14, 12, 40), wood, -60, 26, 0);
+      const wheels = [];
+      for (const x of [-38, 0, 38]) for (const s of [-1, 1]) {
+        const w = K.pivot(g, x, 18, s * 37);
+        K.add(w, K.g.cyl(17, 17, 7, 12), dark, 0, 0, 0, { rx: PI / 2 });
+        K.add(w, K.g.box(30, 3, 7.6), iron); K.add(w, K.g.box(3, 30, 7.6), iron);
+        wheels.push(w);
+      }
+      const turret = K.pivot(g, -6, 55, 0);
+      K.add(turret, K.g.cyl(20, 24, 12, 12), iron, 0, 6, 0);
+      const barrel = K.pivot(turret, 0, 20, 0);
+      K.add(barrel, K.g.sph(10, 10, 8), bronze, 0, 0, 0);
+      K.add(barrel, K.g.cyl(6, 8, 56, 10), bronze, 28, 0, 0, { rz: -PI / 2 });
+      K.add(barrel, K.g.torus(7, 2, 5, 12), bronze, 54, 0, 0, { ry: PI / 2 });
+      for (const s of [-1, 1]) {
+        const gun = K.pivot(g, 30, 58, s * 26);
+        K.add(gun, K.g.cyl(2, 2, 10, 5), dark, 0, -5, 0);
+        K.add(gun, K.g.box(22, 3, 3), wood, 8, 0, 0);
+        K.add(gun, K.g.box(2, 2, 22), dark, 16, 0, 0);
+      }
+      K.add(g, K.g.cyl(1.5, 1.5, 70, 4), dark, -48, 80, 26);
+      K.add(g, K.g.box(1.5, 26, 20), teamM, -48, 100, 37);
+      g.userData = { tunic: wood, arm: K.pivot(g), l1: K.pivot(g), l2: K.pivot(g), ranged: true, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) {
+          if (e.moving) for (const w of wheels) w.rotation.z = -time * 3;
+          turret.rotation.y = -((e.aim ?? e.facing ?? 0) - (e.facing ?? 0));
+          barrel.position.x = -K.ease.bump(e.swing || 0) * 9;
+        } };
+      return shadowed(g);
+    }
+  };
 
   function makeProjectile(p) {
     const g = new THREE.Group();
@@ -1297,6 +1423,12 @@
       return g;
     }
     if (s.shot === 'boulder') return shadowed(new THREE.Mesh(new THREE.IcosahedronGeometry(20, 0), mat(0x55555c)));
+    if (s.shot === 'orb') {   // caster's fire orb
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(G.kit.g.sph(5, 8, 6), G.kit.lit(0xffd090)), glowSprite(0xff8a30, 46, 0.95));
+      return g;
+    }
+    if (s.shot === 'shell') return shadowed(new THREE.Mesh(G.kit.g.sph(8, 10, 8), G.kit.metal(0x2a2a2e, 0.5)));
     shaftMat = shaftMat || new THREE.MeshBasicMaterial({ color: 0xd9c7a0 });
     const g = new THREE.Group();
     g.add(new THREE.Mesh(new THREE.BoxGeometry(s.shot === 'bolt' ? 46 : 26, 2.5, 2.5), shaftMat));
@@ -1654,7 +1786,7 @@
   // How high above a unit's feet its health bar sits.
   function barHeight(e) {
     if (e instanceof G.Hero) return (e.def.barH || 150) + e.lift;
-    if (e instanceof G.Soldier) return e.kind === 'armored' ? 84 : e.kind === 'colossus' ? 190 : G.SQUAD_KINDS[e.kind].ally ? 93 : 62;
+    if (e instanceof G.Soldier) { const k = G.SQUAD_KINDS[e.kind]; return k.barH || (k.ally ? 93 : 62); }
     return 105;
   }
   // Health bars and floating text for one view; the caller has moved the overlay to the view's corner.

@@ -548,7 +548,7 @@
   const COMMON_F = ['x', 'y', 'r', 'hp', 'maxHp', 'team', 'dead', 'facing', 'flash', 'stunTimer', 'rootTimer', 'slowTimer', 'shieldAmt', 'shieldColor', 'marks', 'dots'];
   const HERO_F = COMMON_F.concat(['def', 'swing', 'swingAlt', 'castAnim', 'castSlot', 'moving', 'lift', 'untargetable', 'buffs',
     'mana', 'maxMana', 'gold', 'cooldowns', 'state', 'form', 'dash', 'attackTarget', 'demolishTarget', 'history']);
-  const SOLDIER_F = COMMON_F.concat(['kind', 'ranged', 'swing', 'moving', 'auraOn']);
+  const SOLDIER_F = COMMON_F.concat(['kind', 'ranged', 'swing', 'moving', 'auraOn', 'aim']);
   const DUMMY_F = COMMON_F.concat(['homeX']);
   const ENC_SPECIAL = {
     def: e => e.def.id,

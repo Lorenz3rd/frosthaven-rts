@@ -47,12 +47,18 @@
   function land(s) {
     if (!s.roll) {
       // A shot from outside can still be stopped by a storm field the target moved into.
-      if (s.target && !s.target.dead && G.canShoot(s.x0, s.y0, s.target)) {
-        s.target.takeDamage(s.damage * (s.bldgMul && !(s.target instanceof G.Entity) ? s.bldgMul : 1));
-      }
+      // Soldiers' shots carry their kind, so troop strengths apply (see G.kindMul).
+      const hit = e => e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1) * G.kindMul(s.kind, e));
+      if (s.splash) {
+        for (const e of G.hostilesOf(s.team))
+          if (G.dist(e.x, e.y, s.tx, s.ty) <= s.splash + (e.r || 0) && G.canShoot(s.x0, s.y0, e)) hit(e);
+      } else if (s.target && !s.target.dead && G.canShoot(s.x0, s.y0, s.target)) hit(s.target);
       const fx = G.raceDef(s.team).shotFx;
       if (s.shot === 'rocket') { G.burst(s.tx, s.ty, fx.trail, 18, 200); G.burst(s.tx, s.ty, '#5a5450', 10, 120); }
+      else if (s.shot === 'shell') { G.burst(s.tx, s.ty, fx.trail, 26, 260); G.burst(s.tx, s.ty, '#5a5450', 14, 160); }
+      else if (s.shot === 'orb') G.burst(s.tx, s.ty, fx.trail, 16, 180);
       else G.burst(s.tx, s.ty, fx.impact, 5, 80);
+      if (s.splash) G.addFx('ring', { x: s.tx, y: s.ty, r0: 6, r1: s.splash, dur: 0.3, color: parseInt(fx.trail.slice(1), 16) });
       s.dead = true;
       return;
     }

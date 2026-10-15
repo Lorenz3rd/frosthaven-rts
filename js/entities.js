@@ -47,7 +47,6 @@
       return Math.min(0.8, a);
     }
     applySlow(amount, duration) {
-      if (G.raceMods(this.team).slowImmune) return;
       this.slowAmount = Math.max(this.slowTimer > 0 ? this.slowAmount : 0, amount);
       this.slowTimer = Math.max(this.slowTimer, duration);
     }

@@ -358,6 +358,7 @@
   // Units: hulking, shaggy, tusked snow-folk. Soldier contract: tunic (flash material), arm, l1, l2.
   // ---------------------------------------------------------------------------------------------
   function unit(team, kind, ranged) {
+    if (BEASTS[kind]) return BEASTS[kind](team);
     const gr = new THREE.Group();
     const furM = K.mat(C.fur), dark = K.m(C.furDark), teamM = K.m(K.teamHex(team)), bone = K.m(C.bone);
     // Short thick legs.
@@ -398,6 +399,25 @@
       const bow = add(gr, new THREE.TorusGeometry(18, 1.3, 4, 12, PI), bone, 14, 32, 0, { rz: -PI / 2 });
       add(gr, g.box(0.3, 36, 0.3), K.m(0xe8e0c0), 14, 32, 0, { shadow: false });
       add(gr, g.cone(1.6, 7, 4), K.lit(0xbfefff), 19, 32, 0, { rz: -PI / 2, shadow: false });
+    } else if (kind === 'spearman') {
+      // A mammoth-bone pike with a long ice blade.
+      add(arm, g.cyl(1.4, 1.6, 70, 5), K.m(C.wood), 0, 22, 0);
+      add(arm, g.sph(2.6, 6, 5), bone, 0, 56, 0);
+      add(arm, g.cone(3, 14, 4), iceMat(), 0, 64, 0);
+    } else if (kind === 'elite') {
+      // Berserker: a wolf-skull hood, glowing war paint and a great ice-edged cleaver.
+      add(gr, g.sph(7.2, 8, 6), bone, 9, 50, 0, { sy: 0.6 });
+      for (const s of [-1, 1]) add(gr, g.cone(1.6, 7, 4), bone, 6, 55, s * 4, { rx: s * 0.4 });
+      for (let i = 0; i < 3; i++) add(gr, g.box(1, 2, 14), K.lit(0x5fc8ff), 13.5, 24 + i * 5, 0, { shadow: false });
+      add(arm, g.cyl(1.6, 1.6, 30, 5), K.m(C.wood), 0, 12, 0);
+      add(arm, g.box(4, 22, 14), iceMat(), 0, 28, 5);
+    } else if (kind === 'caster') {
+      // Frost shaman: a long hide mantle, an antler crown and a staff crowned with living ice.
+      add(gr, g.cone(15, 30, 8), K.m(C.hide), -1, 15, 0);
+      for (const s of [-1, 1]) add(gr, g.cyl(0.8, 1.2, 14, 4), bone, 5, 54, s * 5, { rx: s * 0.7 });
+      add(arm, g.cyl(1.2, 1.4, 52, 5), K.m(C.wood), 0, 14, 0);
+      add(arm, g.oct(5), glowIce(), 0, 43, 0, { shadow: false });
+      K.addGlow(arm, 0x9fdcff, 34, 0, 43, 0, 0.85);
     } else if (kind === 'engineer') {
       add(gr, g.box(14, 14, 14), iceMat(), -14, 40, 0);   // an ice block hauled on the back
       add(arm, g.cyl(1.4, 1.4, 22, 5), K.m(C.wood), 0, 10, 0);
@@ -429,6 +449,105 @@
     return K.shadowed(gr);
   }
 
+  // Beasts and engines: frost wolves, tusk-rhino riders and the war mammoth. Same soldier contract;
+  // they pose their own legs, heads and guns in userData.tick.
+  const BEASTS = {
+    // Frost wolf: white-furred, an ice-spined back and a team war-harness. Bites by dipping its head.
+    creature(team) {
+      const gr = new THREE.Group();
+      const furM = K.mat(C.fur), dark = K.m(C.furDark), teamM = K.m(K.teamHex(team));
+      add(gr, g.sph(10, 9, 7), furM, 4, 24, 0, { sx: 1.7, sy: 0.95, sz: 0.85 });
+      add(gr, g.sph(8, 8, 6), furM, -11, 23, 0, { sx: 1.2, sy: 0.85, sz: 0.85 });
+      for (let i = 0; i < 4; i++) iceShard(gr, 8 - i * 6, 30 - i, 0, 9 - i * 1.5, 2.2, 0.3);
+      add(gr, g.torus(8.5, 1.6, 4, 10), teamM, 8, 25, 0, { ry: PI / 2 });
+      add(gr, g.cone(3.5, 18, 6), furM, -23, 28, 0, { rz: 1.2 });
+      const head = pivot(gr, 18, 31, 0);
+      add(head, g.sph(6, 8, 6), furM, 3, 2, 0);
+      add(head, g.cone(3.4, 11, 6), furM, 11, 0, 0, { rz: -PI / 2 });
+      add(head, g.sph(1.4, 5, 4), dark, 16, 0.5, 0);
+      for (const z of [-3, 3]) {
+        add(head, g.cone(2, 6, 4), furM, 0, 8, z);
+        add(head, g.sph(0.9, 4, 3), K.lit(0x9fdcff), 7, 4, z * 0.8, { shadow: false });
+      }
+      const legs = K.legs4(gr, 9, 18, 5, p => { add(p, g.cyl(2.3, 1.6, 17, 5), furM, 0, -8.5, 0); add(p, g.sph(2.2, 5, 4), dark, 1, -17, 0); });
+      gr.scale.setScalar(1.2);
+      gr.userData = { tunic: furM, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 17, 0.7); head.rotation.z = -K.ease.bump(e.swing || 0) * 0.6; } };
+      return K.shadowed(gr);
+    },
+    // Tusk rider: an Algox astride a shaggy woolly rhino, levelling an ice-tipped bone pike.
+    mounted(team) {
+      const gr = new THREE.Group();
+      const furM = K.mat(C.fur), hide = K.m(C.hide), dark = K.m(C.hideDark), teamM = K.m(K.teamHex(team)), bone = K.m(C.bone);
+      add(gr, g.ico(16, 1), hide, 0, 36, 0, { sx: 1.6, sy: 0.95, sz: 0.9 });
+      add(gr, g.ico(14, 1), K.m(C.hideLight), -6, 42, 0, { sx: 1.4, sy: 0.75, sz: 0.95 });
+      add(gr, g.sph(9, 8, 6), dark, 27, 34, 0, { sx: 1.3 });
+      add(gr, g.cone(3.4, 17, 5), K.m(C.tusk), 37, 43, 0, { rz: -0.5 });
+      add(gr, g.cone(2.2, 8, 5), K.m(C.tusk), 30, 44, 0, { rz: -0.3 });
+      for (const z of [-4, 4]) add(gr, g.sph(1, 5, 4), K.lit(0xffa020), 31, 37, z, { shadow: false });
+      add(gr, g.box(24, 4, 30), teamM, -2, 51, 0);
+      add(gr, g.cyl(2, 3.5, 12, 5), dark, -26, 36, 0, { rz: 0.9 });
+      const legs = K.legs4(gr, 16, 28, 8, p => { add(p, g.cyl(4, 3.4, 24, 6), hide, 0, -12, 0); add(p, g.cyl(4.4, 4.6, 4, 6), dark, 0, -25, 0); });
+      // Rider: a hunched shaggy Algox with tusks.
+      add(gr, g.ico(10, 1), furM, -3, 64, 0, { sy: 1.1 });
+      add(gr, g.box(1.5, 18, 4), teamM, 6, 64, 0, { rx: 0.7 });
+      add(gr, g.sph(6.5, 8, 6), furM, 5, 76, 0);
+      for (const s of [-1, 1]) {
+        add(gr, new THREE.TorusGeometry(4.5, 0.8, 4, 8, PI * 0.6), K.m(C.tusk), 11, 71, s * 2.6, { rz: PI * 0.55 });
+        add(gr, g.cyl(3, 3, 14, 5), furM, 0, 52, s * 13, { rx: s * 0.6 });
+      }
+      const lance = pivot(gr, -2, 68, 12);
+      add(lance, g.cyl(1.5, 2.4, 84, 6), K.m(C.wood), 0, 28, 0);
+      add(lance, g.sph(3, 6, 5), bone, 0, 62, 0);
+      add(lance, g.cone(3.2, 16, 4), iceMat(), 0, 76, 0);
+      lance.rotation.z = -1.3;
+      gr.userData = { tunic: furM, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 15, 0.65); lance.position.x = -2 + K.ease.bump(e.swing || 0) * 12; } };
+      return K.shadowed(gr);
+    },
+    // War mammoth: a towering tusked mammoth bearing a hide howdah with a glacier hurler on a turning
+    // mount and a javelin thrower on each flank.
+    warMachine(team) {
+      const gr = new THREE.Group();
+      const hideM = K.mat(C.hide), dark = K.m(C.hideDark), teamM = K.m(K.teamHex(team)), wood = K.m(C.wood), bone = K.m(C.bone);
+      add(gr, g.ico(32, 1), hideM, -4, 58, 0, { sx: 1.4, sy: 0.95, sz: 0.95 });
+      add(gr, g.ico(20, 1), hideM, 10, 76, 0);
+      add(gr, g.ico(16, 1), hideM, 42, 64, 0);
+      add(gr, g.cyl(5, 7, 26, 6), dark, 56, 46, 0, { rz: 0.15 });
+      add(gr, g.cyl(3.5, 5, 18, 6), dark, 58, 26, 0, { rz: -0.2 });
+      for (const s of [-1, 1]) {
+        add(gr, new THREE.TorusGeometry(20, 2.6, 5, 12, PI * 0.7), K.m(C.tusk), 54, 50, s * 12, { rz: PI * 1.1 });
+        add(gr, g.sph(10, 8, 6), dark, 36, 70, s * 15, { sx: 0.9, sz: 0.35 });
+        add(gr, g.box(54, 28, 2), teamM, -6, 64, s * 30.5);
+        add(gr, g.box(54, 3, 2.4), bone, -6, 50, s * 30.6);
+      }
+      for (const z of [-6, 6]) add(gr, g.sph(1.6, 5, 4), K.lit(0xffa020), 52, 70, z, { shadow: false });
+      add(gr, g.cyl(2, 4, 16, 5), dark, -48, 56, 0, { rz: 1.0 });
+      const legs = K.legs4(gr, 26, 40, 16, p => { add(p, g.cyl(8, 7, 40, 7), hideM, 0, -20, 0); add(p, g.cyl(8.6, 9, 5, 8), dark, 0, -38, 0); });
+      // Howdah: a hide-roofed platform with bone posts.
+      add(gr, g.box(60, 6, 54), wood, -8, 90, 0);
+      for (const [x, z] of [[-34, -24], [-34, 24], [18, -24], [18, 24]]) add(gr, g.cyl(1.8, 1.8, 20, 5), bone, x, 102, z);
+      const turret = pivot(gr, -8, 96, 0);
+      add(turret, g.cyl(14, 16, 8, 10), wood, 0, 4, 0);
+      const barrel = pivot(turret, 0, 14, 0);
+      add(barrel, g.cyl(6, 7.5, 46, 8), K.m(C.hideDark), 20, 0, 0, { rz: -PI / 2 });
+      add(barrel, g.ico(7, 0), iceMat(), 44, 0, 0);
+      for (const s of [-1, 1]) {
+        const gun = pivot(gr, 12, 98, s * 22);
+        add(gun, g.box(18, 3, 3), wood, 6, 0, 0);
+        add(gun, g.torus(8, 0.9, 4, 8, PI), bone, 12, 0, 0, { rx: PI / 2, rz: -PI / 2 });
+      }
+      hideBanner(pivot(gr, -36, 92, 0), team, 0, 0, 0, 44);
+      gr.userData = { tunic: hideM, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: true, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) {
+          K.gait(legs, e, time, u.phase, 6, 0.3);
+          turret.rotation.y = -((e.aim ?? e.facing ?? 0) - (e.facing ?? 0));
+          barrel.position.x = -K.ease.bump(e.swing || 0) * 8;
+        } };
+      return K.shadowed(gr);
+    }
+  };
+
   // ---------------------------------------------------------------------------------------------
   // Shots (+x = flight direction)
   // ---------------------------------------------------------------------------------------------
@@ -444,6 +563,12 @@
       add(gr, g.ico(20, 0), iceMat(), 0, 0, 0);
       add(gr, g.dome(14, 8, 4), K.m(C.snow), 0, 8, 0);
       gr.add(K.glow(0x9fdcff, 60, 0.4));
+    } else if (s.shot === 'orb') {   // frost orb
+      add(gr, g.oct(5), glowIce(), 0, 0, 0, { shadow: false });
+      gr.add(K.glow(0x9fdcff, 46, 0.95));
+    } else if (s.shot === 'shell') {   // hurled ice chunk
+      add(gr, g.ico(10, 0), iceMat(), 0, 0, 0);
+      gr.add(K.glow(0x9fdcff, 34, 0.5));
     } else {   // avalanche bomb: a packed snowball with a glowing frost core
       add(gr, g.sph(9, 10, 8), K.m(C.snow), 0, 0, 0, { shadow: false });
       gr.add(K.glow(0x9fdcff, 40, 0.9));

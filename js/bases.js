@@ -30,11 +30,18 @@
     // Storm Tower: no weapon. Its field covers the whole base: ranged attacks from outside can't hit
     // anything of its side inside the base (see G.canShoot). Movement and shots out are unaffected.
     storm: { name: 'Storm Tower', cost: 225, r: 22 * SCALE, field: true },
-    // Barracks: `squad` names the unit kind it spawns (see SQUAD_KINDS in squads.js).
-    barracks: { name: 'Infantry Barracks', cost: 125, r: 26 * SCALE, squad: 'infantry' },
+    // Barracks: `squad` names the unit kind it spawns (see SQUAD_KINDS in squads.js). Grouped in the
+    // build menu as Infantry, Ranged and Mobile. `look`: draw it with that building type's model.
+    barracks: { name: 'Grunt Barracks', cost: 75, r: 26 * SCALE, squad: 'infantry' },
+    barracksSpear: { name: 'Spearmen Barracks', cost: 100, r: 26 * SCALE, squad: 'spearman', look: 'barracks' },
+    barracksElite: { name: 'Elite Barracks', cost: 150, r: 26 * SCALE, squad: 'elite', look: 'barracksArmored' },
     barracksArmored: { name: 'Armored Barracks', cost: 175, r: 26 * SCALE, squad: 'armored' },
-    barracksShort: { name: 'Skirmisher Barracks', cost: 150, r: 26 * SCALE, squad: 'short' },
-    barracksLong: { name: 'Archer Barracks', cost: 175, r: 26 * SCALE, squad: 'long' },
+    barracksShort: { name: 'Skirmisher Barracks', cost: 125, r: 26 * SCALE, squad: 'short' },
+    barracksLong: { name: 'Marksmen Barracks', cost: 150, r: 26 * SCALE, squad: 'long' },
+    barracksCaster: { name: 'Caster Sanctum', cost: 200, r: 26 * SCALE, squad: 'caster', look: 'barracksLong' },
+    barracksCreature: { name: 'Creature Pens', cost: 125, r: 26 * SCALE, squad: 'creature', look: 'barracksShort' },
+    barracksMounted: { name: 'Stables', cost: 175, r: 26 * SCALE, squad: 'mounted', look: 'barracks' },
+    barracksWarMachine: { name: 'Siege Works', cost: 400, r: 26 * SCALE, squad: 'warMachine', look: 'barracksArmored' },
     // Allies: barracks that train a single, larger specialist (see SQUAD_KINDS in squads.js).
     allyEngineer: { name: 'Engineer Lodge', cost: 150, r: 19 * SCALE, squad: 'engineer' },
     allyMedic: { name: 'Medic Tent', cost: 175, r: 19 * SCALE, squad: 'medic' },
@@ -145,7 +152,7 @@
   // Buildings are attackable: they carry position, radius and hp like an entity.
   G.addBuilding = function (base, slot, type, team) {
     const def = G.BUILDINGS[type];
-    const hp = Math.round((def.hp || BUILDING_HP) * (def.command ? 1 : G.raceMods(team).bhp));
+    const hp = def.hp || BUILDING_HP;
     slot.building = {
       type, team, base, slot, x: slot.x, y: slot.y, r: def.r,
       maxHp: hp, hp, dead: false, flash: 0,

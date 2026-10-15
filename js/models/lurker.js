@@ -329,6 +329,7 @@
   // Units: upright crab-folk. Shell body, eye stalks, a claw (or a weapon held in it).
   // ---------------------------------------------------------------------------------------------
   function unit(team, kind, ranged) {
+    if (BEASTS[kind]) return BEASTS[kind](team);
     const gr = new THREE.Group();
     const shellM = K.mat(C.shell, { metalness: 0.3, roughness: 0.45 }), hi = K.m(C.shellHi), under = K.m(C.sand), teamM = K.m(K.teamHex(team));
     // Two pairs of jointed legs (each pivot swings as one stride).
@@ -379,6 +380,23 @@
       add(gr, g.cyl(1, 1, 44, 4), K.m(0x6b4a2a), 12, 30, 0, { rz: PI / 2 - 0.3 });
       add(gr, g.cone(2.2, 8, 4), K.metal(0x9aa0a8), 32, 37, 0, { rz: -PI / 2 + 0.3 });
       add(gr, g.cyl(1.4, 1.6, 20, 5), K.m(C.coral), 8, 24, 2, { rz: PI / 2 - 0.3 });
+    } else if (kind === 'spearman') {
+      // A long trident of driftwood and polished steel.
+      add(arm, g.cyl(1.1, 1.3, 70, 5), K.m(0x6b4a2a), 0, 22, 0);
+      add(arm, g.box(10, 1.6, 1.6), K.metal(0x9aa0a8), 0, 56, 0);
+      for (const dx of [-4.5, 0, 4.5]) add(arm, g.cone(1.3, 9, 4), K.metal(0xc8ccd2), dx, 61, 0);
+    } else if (kind === 'elite') {
+      // Razorclaw: a crest of coral spikes and a huge claw edged with a serrated shell blade.
+      for (let i = 0; i < 4; i++) add(gr, g.cone(1.3, 10 - i, 4), K.m(C.coral), 2 - i * 2.5, 47 - i, 0, { rz: 0.3 + i * 0.15 });
+      add(arm, g.sph(6, 8, 6), K.m(C.shellDark), 0, 11, 0, { sy: 1.5 });
+      add(arm, g.box(2, 26, 10), K.metal(0xc8ccd2, 0.25), 0, 28, 3);
+      for (let i = 0; i < 5; i++) add(arm, g.cone(0.9, 4, 4), K.m(C.pearl), 0, 18 + i * 5, 8.5, { rx: PI / 2 });
+    } else if (kind === 'caster') {
+      // Tide priest: a kelp robe to the ground and a pearl staff glowing with brine light.
+      add(gr, g.cone(13, 26, 8), K.m(C.kelp), 0, 13, 0);
+      add(arm, g.cyl(1.2, 1.4, 50, 5), K.m(C.coralB), 0, 14, 0);
+      add(arm, g.sph(4.5, 10, 8), pearlM(), 0, 41, 0);
+      K.addGlow(arm, C.glow, 34, 0, 41, 0, 0.85);
     } else if (kind === 'engineer') {
       coral(gr, -10, 0, 16, C.coral, 2).position.set(-10, 34, 0);
       add(arm, g.cyl(1, 1, 26, 4), K.m(C.coralB), 0, 12, 0);
@@ -404,6 +422,108 @@
     return K.shadowed(gr);
   }
 
+  // Beasts and engines: snapjaw crabs, strider riders and the leviathan. Same soldier contract;
+  // they pose their own legs, claws and guns in userData.tick.
+  const BEASTS = {
+    // Snapjaw: a low, wide-shelled crab beast with two crushing claws that snap shut on a strike.
+    creature(team) {
+      const gr = new THREE.Group();
+      const shellM = K.mat(C.shell, { metalness: 0.3, roughness: 0.45 }), hi = K.m(C.shellHi), dark = K.m(C.shellDark), teamM = K.m(K.teamHex(team));
+      add(gr, g.sph(14, 12, 8), shellM, 0, 20, 0, { sx: 1.2, sy: 0.55, sz: 1.1 });
+      add(gr, g.torus(12, 1.2, 4, 16, PI), teamM, -2, 24, 0, { rx: -PI / 2 });
+      for (let i = 0; i < 5; i++) add(gr, g.cone(1.4, 6, 4), hi, -6 + i * 3, 27, (i - 2) * 4, { rz: 0.4 });
+      for (const s of [-1, 1]) {
+        add(gr, g.cyl(0.6, 0.8, 8, 4), hi, 12, 28, s * 3);
+        add(gr, g.sph(1.5, 6, 5), K.lit(C.glow), 12, 32, s * 3, { shadow: false });
+      }
+      const claws = pivot(gr, 13, 18, 0);
+      for (const s of [-1, 1]) {
+        add(claws, g.cyl(2, 1.6, 10, 5), hi, 3, 0, s * 9, { rz: -PI / 2 + 0.3 });
+        add(claws, g.sph(5, 8, 6), dark, 10, 1, s * 10, { sx: 1.5 });
+        add(claws, g.cone(2.2, 8, 4), hi, 17, 3, s * 9, { rz: -PI / 2 });
+        add(claws, g.cone(1.6, 6, 4), hi, 16, -1, s * 11, { rz: -PI / 2 - 0.4 });
+      }
+      const legs = K.legs4(gr, 7, 18, 11, (p, sx, sz) => {
+        add(p, g.cyl(1.7, 1.3, 14, 5), hi, 0, -4, sz * 5, { rx: sz * 1.0 });
+        add(p, g.cyl(1.2, 0.8, 12, 5), hi, 0, -12, sz * 10, { rx: sz * 0.2 });
+      });
+      gr.scale.setScalar(1.15);
+      gr.userData = { tunic: shellM, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 22, 0.45); claws.rotation.z = K.ease.bump(e.swing || 0) * 0.5; } };
+      return K.shadowed(gr);
+    },
+    // Strider rider: a crab-folk lancer on a long-legged lobster steed with a fanned tail.
+    mounted(team) {
+      const gr = new THREE.Group();
+      const shellM = K.mat(C.shell, { metalness: 0.3, roughness: 0.45 }), steed = K.m(0xb8503a), hi = K.m(0xe07a5a), teamM = K.m(K.teamHex(team));
+      add(gr, g.sph(12, 10, 8), steed, 0, 36, 0, { sx: 1.9, sy: 0.75, sz: 0.85 });
+      for (let i = 0; i < 3; i++) add(gr, g.sph(7 - i, 8, 6), hi, -24 - i * 8, 34 - i * 2, 0, { sx: 1.2, sy: 0.6 });
+      add(gr, g.cone(8, 9, 5), steed, -50, 31, 0, { rz: PI / 2, sz: 0.35 });
+      add(gr, g.sph(6, 8, 6), steed, 24, 38, 0);
+      for (const s of [-1, 1]) {
+        add(gr, g.cyl(0.5, 0.6, 32, 4), hi, 34, 50, s * 4, { rz: -1.0, rx: s * 0.2 });
+        add(gr, g.sph(1.4, 6, 5), K.lit(C.glow), 28, 43, s * 3, { shadow: false });
+      }
+      add(gr, g.box(18, 4, 22), teamM, -2, 45, 0);
+      const legs = K.legs4(gr, 14, 32, 8, (p, sx, sz) => {
+        add(p, g.cyl(2.2, 1.8, 18, 5), hi, 0, -6, sz * 4, { rx: sz * 0.6 });
+        add(p, g.cyl(1.6, 1.0, 20, 5), hi, 0, -22, sz * 7, { rx: -sz * 0.1 });
+      });
+      // Rider.
+      add(gr, g.sph(9, 10, 8), shellM, -2, 58, 0, { sx: 0.85, sy: 1.15 });
+      add(gr, g.torus(8.5, 1.1, 4, 14, PI), teamM, -3, 60, 0, { ry: PI / 2, rx: 0.3 });
+      add(gr, g.sph(4.5, 8, 6), shellM, 3, 70, 0, { sx: 1.1 });
+      for (const s of [-1, 1]) {
+        add(gr, g.cyl(0.6, 0.8, 6, 4), hi, 4, 75, s * 2.4, { rx: s * 0.3 });
+        add(gr, g.sph(1.3, 6, 5), K.lit(C.glow), 4, 79, s * 3.2, { shadow: false });
+        add(gr, g.cyl(1.4, 1.2, 14, 5), K.m(C.shellHi), 0, 46, s * 11, { rx: s * 0.6 });
+      }
+      const lance = pivot(gr, -2, 62, 10);
+      add(lance, g.cyl(1.1, 1.6, 82, 6), K.m(0x6b4a2a), 0, 27, 0);
+      add(lance, g.cone(2.8, 12, 4), K.metal(0xc8ccd2, 0.25), 0, 74, 0);
+      for (const s of [-1, 1]) add(lance, g.cone(0.9, 6, 4), K.metal(0xc8ccd2, 0.25), s * 2.4, 67, 0, { rz: s * 2.6 });
+      lance.rotation.z = -1.3;
+      gr.userData = { tunic: shellM, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 18, 0.6); lance.position.x = -2 + K.ease.bump(e.swing || 0) * 12; } };
+      return K.shadowed(gr);
+    },
+    // Leviathan: a colossal hermit crab hauling a coral-grown spiral shell with a brine mortar on top
+    // and spine launchers on each side.
+    warMachine(team) {
+      const gr = new THREE.Group();
+      const shellM = K.mat(0xc8845a, { roughness: 0.6 }), dark = K.m(C.shellDark), hi = K.m(C.shellHi), teamM = K.m(K.teamHex(team));
+      add(gr, g.sph(34, 14, 10), shellM, -12, 54, 0, { sx: 1.25, sy: 0.9, sz: 0.95 });
+      for (let i = 0; i < 4; i++) add(gr, g.torus(30 - i * 6, 4.5, 6, 16), K.m(i % 2 ? 0xe8c8a0 : 0x9a5a3a), -20 + i * 2, 50 + i * 9, 0, { rx: PI / 2 });
+      for (const [x, z, c, s] of [[-40, -18, C.coral, 1], [-34, 22, C.coralC, 2], [-2, -26, C.coralB, 3]]) coral(gr, x, z, 30, c, s).position.y = 62;
+      for (const s of [-1, 1]) add(gr, g.box(40, 22, 2), teamM, -14, 42, s * 32);
+      add(gr, g.sph(16, 10, 8), dark, 30, 30, 0, { sx: 1.3 });
+      for (const s of [-1, 1]) {
+        add(gr, g.cyl(1, 1.2, 14, 4), hi, 40, 46, s * 5, { rx: s * 0.3 });
+        add(gr, g.sph(2.4, 6, 5), K.lit(C.glow), 40, 53, s * 6.5, { shadow: false });
+        add(gr, g.sph(10, 8, 6), dark, 48, 20, s * 20, { sx: 1.6 });
+        add(gr, g.cone(4, 14, 5), hi, 62, 22, s * 19, { rz: -PI / 2 });
+      }
+      const legs = K.legs4(gr, 26, 28, 24, (p, sx, sz) => {
+        add(p, g.cyl(3.6, 2.8, 22, 6), hi, 0, -6, sz * 6, { rx: sz * 0.8 });
+        add(p, g.cyl(2.6, 1.6, 20, 6), hi, 0, -20, sz * 13, { rx: sz * 0.15 });
+      });
+      const turret = pivot(gr, -12, 92, 0);
+      add(turret, g.cyl(14, 16, 8, 10), dark, 0, 4, 0);
+      const barrel = pivot(turret, 0, 10, 0);
+      add(barrel, g.cyl(9, 11, 30, 10), K.m(C.coral), 8, 8, 0, { rz: -0.9 });
+      add(barrel, g.sph(7, 10, 8), water(), 18, 17, 0);
+      barrel.add(K.glow(C.glow, 40, 0.7)); barrel.children[barrel.children.length - 1].position.set(18, 17, 0);
+      for (const s of [-1, 1]) urchin(gr, 12, 56, s * 26, 5);
+      gr.userData = { tunic: shellM, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: true, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) {
+          K.gait(legs, e, time, u.phase, 9, 0.35);
+          turret.rotation.y = -((e.aim ?? e.facing ?? 0) - (e.facing ?? 0));
+          barrel.position.x = -K.ease.bump(e.swing || 0) * 7;
+        } };
+      return K.shadowed(gr);
+    }
+  };
+
   function shot(s) {
     const gr = new THREE.Group();
     if (s.shot === 'arrow') {   // urchin spine
@@ -415,6 +535,13 @@
       add(gr, g.sph(18, 14, 10), water(), 0, 0, 0);
       add(gr, g.sph(7, 8, 6), pearlM(), 0, 0, 0, { shadow: false });
       gr.add(K.glow(C.glow, 70, 0.6));
+    } else if (s.shot === 'orb') {   // tide orb
+      add(gr, g.sph(5, 10, 8), water(), 0, 0, 0, { shadow: false });
+      gr.add(K.glow(C.glow, 46, 0.95));
+    } else if (s.shot === 'shell') {   // small brine globe with a pearl core
+      add(gr, g.sph(10, 12, 8), water(), 0, 0, 0);
+      add(gr, g.sph(4, 8, 6), pearlM(), 0, 0, 0, { shadow: false });
+      gr.add(K.glow(C.glow, 40, 0.6));
     } else {   // ink bomb
       add(gr, g.sph(7, 10, 8), K.m(C.ink, { emissive: 0x2a0a4a }), 0, 0, 0, { sx: 1.3, shadow: false });
       gr.add(K.glow(0x9a4aff, 40, 0.9));

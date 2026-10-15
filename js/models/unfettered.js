@@ -368,6 +368,7 @@
   // Units: riveted automatons with arc-light cores and single-eye visors.
   // ---------------------------------------------------------------------------------------------
   function unit(team, kind, ranged) {
+    if (BEASTS[kind]) return BEASTS[kind](team);
     const gr = new THREE.Group();
     const body = K.mat(C.plate, { metalness: 0.6, roughness: 0.4 }), dk = darkM(), br = brass(), teamM = K.m(K.teamHex(team));
     // Piston legs.
@@ -415,6 +416,26 @@
       add(gr, g.cyl(1.4, 1.4, 44, 6), dk, 14, 30, 0, { rz: PI / 2 });
       add(gr, g.cyl(2, 2, 10, 8), br, 12, 34, 0, { rz: PI / 2 });
       add(gr, g.cyl(1.6, 1.6, 4, 8), K.lit(0xff4030), 7, 43, 3, { rz: PI / 2, shadow: false });
+    } else if (kind === 'spearman') {
+      // Piston pike: a long steel shaft with a brass collar and an arc-lit spike.
+      add(arm, g.cyl(1.1, 1.3, 70, 6), steel(), 0, 22, 0);
+      add(arm, g.cyl(2.4, 2.4, 6, 8), br, 0, 54, 0);
+      add(arm, g.cone(2.2, 12, 6), core(), 0, 63, 0, { shadow: false });
+    } else if (kind === 'elite') {
+      // Duelist frame: a team crest fin, slim plating and a long arc-blade.
+      add(gr, g.box(10, 6, 1.2), teamM, -2, 52, 0);
+      for (const s of [-1, 1]) add(gr, g.box(8, 3, 6), br, 0, 36, s * 10, { rx: s * 0.4 });
+      add(arm, g.box(2.2, 40, 1), K.metal(0xd8dce2, 0.2), 0, 22, 0);
+      add(arm, g.box(0.6, 36, 1.4), core(), 1.4, 22, 0, { shadow: false });
+      add(arm, g.box(3, 2.4, 11), br, 0, 2, 0);
+    } else if (kind === 'caster') {
+      // Arc-caster: a coil-wound staff throwing lightning and a capacitor pack on the back.
+      add(gr, g.box(8, 16, 12), dk, -9, 30, 0);
+      for (const z of [-3, 3]) add(gr, g.cyl(1.4, 1.4, 12, 6), core(), -13.5, 32, z, { shadow: false });
+      add(arm, g.cyl(1.2, 1.2, 50, 6), steel(), 0, 14, 0);
+      for (let i = 0; i < 4; i++) add(arm, g.torus(2.6, 0.6, 4, 10), K.metal(C.copper, 0.3), 0, 28 + i * 3, 0, { rx: PI / 2 });
+      add(arm, g.sph(3.8, 8, 6), core(), 0, 42, 0, { shadow: false });
+      K.addGlow(arm, C.glow, 32, 0, 42, 0, 0.85);
     } else if (kind === 'engineer') {
       add(gr, g.box(8, 12, 12), br, -9, 30, 0);   // tool pack
       gear(gr, -14, 30, 0, 4, 8).rotation.y = PI / 2;
@@ -442,6 +463,113 @@
     return K.shadowed(gr);
   }
 
+  // Beasts and engines: clockwork hounds, steam-charger riders and the siege crawler. Same soldier
+  // contract; they pose their own legs, heads, treads and guns in userData.tick.
+  const BEASTS = {
+    // Clockwork hound: a riveted box frame on piston legs, a snapping steel jaw and a glowing eye slit.
+    creature(team) {
+      const gr = new THREE.Group();
+      const body = K.mat(C.plate, { metalness: 0.6, roughness: 0.4 }), dk = darkM(), br = brass(), teamM = K.m(K.teamHex(team));
+      add(gr, g.box(30, 12, 13), body, 0, 24, 0);
+      for (const x of [-8, 0, 8]) add(gr, g.box(2, 13, 14), br, x, 24, 0);
+      for (const s of [-1, 1]) add(gr, g.box(12, 5, 1), teamM, 4, 24, s * 6.8);
+      add(gr, g.cyl(3, 3, 1, 10), core(), -8, 31, 0, { shadow: false });
+      add(gr, g.cyl(0.6, 0.6, 14, 4), dk, -19, 30, 0, { rz: 0.9 });
+      add(gr, g.sph(1.2, 5, 4), K.lit(K.teamGlow(team)), -24, 35, 0, { shadow: false });
+      const head = pivot(gr, 15, 29, 0);
+      add(head, g.box(11, 8, 9), body, 4, 1, 0);
+      add(head, g.box(9, 3, 8), dk, 8, -4.5, 0);
+      add(head, g.box(1, 2, 7), core(), 9.6, 2, 0, { shadow: false });
+      for (const z of [-3, 3]) add(head, g.cone(1.4, 5, 4), br, 1, 7, z);
+      const legs = K.legs4(gr, 11, 18, 6, p => {
+        add(p, g.cyl(1.8, 1.8, 9, 6), dk, 0, -4, 0);
+        add(p, g.cyl(1.2, 1.2, 9, 6), K.metal(0xc8ccd2, 0.25), 0, -12, 0);
+        add(p, g.box(5, 2, 4), br, 1, -17, 0);
+      });
+      gr.scale.setScalar(1.15);
+      gr.userData = { tunic: body, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 18, 0.6); head.rotation.z = -K.ease.bump(e.swing || 0) * 0.5; } };
+      return K.shadowed(gr);
+    },
+    // Charger: an automaton lancer on a boiler-bellied mechanical steed with piston legs and a smokestack.
+    mounted(team) {
+      const gr = new THREE.Group();
+      const body = K.mat(C.plate, { metalness: 0.6, roughness: 0.4 }), dk = darkM(), br = brass(), teamM = K.m(K.teamHex(team));
+      add(gr, g.cyl(10, 10, 46, 10), K.metal(C.copper, 0.35), 0, 36, 0, { rz: PI / 2 });
+      for (const x of [-16, 0, 16]) add(gr, g.cyl(10.6, 10.6, 2.4, 10), br, x, 36, 0, { rz: PI / 2 });
+      for (const s of [-1, 1]) add(gr, g.box(24, 7, 1), teamM, 0, 36, s * 10.4);
+      add(gr, g.cyl(3, 4, 16, 8), dk, -16, 50, 0);
+      K.addGlow(gr, 0xffb060, 18, -16, 59, 0, 0.6);
+      add(gr, g.box(8, 20, 8), dk, 25, 46, 0, { rz: -0.6 });
+      add(gr, g.box(16, 7, 8), body, 33, 56, 0, { rz: -0.35 });
+      add(gr, g.box(1, 2, 7), core(), 41.2, 54.5, 0, { rz: -0.35, shadow: false });
+      add(gr, g.box(10, 4, 16), dk, -2, 47, 0);
+      const legs = K.legs4(gr, 16, 30, 7, p => {
+        add(p, g.cyl(2.2, 2.2, 12, 8), dk, 0, -6, 0);
+        add(p, g.cyl(1.4, 1.4, 12, 8), K.metal(0xc8ccd2, 0.25), 0, -17, 0);
+        add(p, g.box(6, 3, 5), br, 0.5, -24, 0);
+      });
+      // Rider.
+      add(gr, g.box(10, 16, 13), body, -2, 58, 0);
+      add(gr, g.cyl(3.4, 3.4, 1, 10), core(), 3.2, 60, 0, { rz: PI / 2, shadow: false });
+      for (const s of [-1, 1]) add(gr, g.cyl(1.6, 1.6, 14, 6), dk, 0, 46, s * 10, { rx: s * 0.6 });
+      add(gr, g.cyl(4.5, 5, 8, 12), body, -2, 71, 0);
+      add(gr, g.dome(4.5, 12, 4), br, -2, 75, 0);
+      add(gr, g.box(1, 2, 6), core(), 2.6, 71, 0, { shadow: false });
+      add(gr, g.box(1.5, 10, 12), teamM, -2, 58, -8);
+      const lance = pivot(gr, -2, 62, 9);
+      add(lance, g.cyl(1.2, 2.4, 82, 8), steel(), 0, 27, 0);
+      add(lance, g.cyl(3, 3, 6, 8), br, 0, 2, 0);
+      add(lance, g.cone(2.2, 12, 6), core(), 0, 74, 0, { shadow: false });
+      lance.rotation.z = -1.3;
+      gr.userData = { tunic: body, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: false, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) { K.gait(legs, e, time, u.phase, 19, 0.75); lance.position.x = -2 + K.ease.bump(e.swing || 0) * 12; } };
+      return K.shadowed(gr);
+    },
+    // Siege crawler: a treaded steel hull with an arc-cannon turret and a tesla node on each flank.
+    warMachine(team) {
+      const gr = new THREE.Group();
+      const body = K.mat(C.plate, { metalness: 0.6, roughness: 0.4 }), dk = darkM(), br = brass(), teamM = K.m(K.teamHex(team));
+      add(gr, g.box(96, 24, 56), body, 0, 34, 0);
+      add(gr, g.box(22, 14, 56), plate(), 50, 30, 0, { rz: 0.6 });
+      for (const s of [-1, 1]) {
+        add(gr, g.box(108, 22, 16), dk, 0, 13, s * 34);
+        add(gr, g.box(70, 5, 1), teamM, -4, 38, s * 28.6);
+        add(gr, g.cyl(3, 4, 16, 8), dk, -40, 54, s * 16);
+        K.addGlow(gr, 0xffb060, 16, -40, 63, s * 16, 0.6);
+      }
+      add(gr, g.cyl(6, 6, 2, 12), core(), -30, 47, 0, { shadow: false });
+      const wheels = [];
+      for (const x of [-42, -14, 14, 42]) for (const s of [-1, 1]) {
+        const w = pivot(gr, x, 13, s * 42.5);
+        add(w, g.cyl(9, 9, 2, 10), br, 0, 0, 0, { rx: PI / 2 });
+        add(w, g.box(14, 2, 2.2), dk);
+        wheels.push(w);
+      }
+      const turret = pivot(gr, 6, 46, 0);
+      add(turret, g.cyl(20, 23, 14, 12), plate(), 0, 7, 0);
+      add(turret, g.dome(14, 12, 5), br, 0, 14, 0);
+      const barrel = pivot(turret, 0, 16, 0);
+      add(barrel, g.cyl(5, 6, 60, 10), steel(), 30, 0, 0, { rz: -PI / 2 });
+      for (let i = 0; i < 3; i++) add(barrel, g.torus(6.2, 1, 4, 12), K.metal(C.copper, 0.3), 20 + i * 10, 0, 0, { ry: PI / 2 });
+      add(barrel, g.box(8, 10, 10), dk, 60, 0, 0);
+      add(barrel, g.cyl(2, 2, 1, 8), core(), 64.2, 0, 0, { rz: PI / 2, shadow: false });
+      for (const s of [-1, 1]) {
+        const gun = pivot(gr, 26, 48, s * 22);
+        add(gun, g.cyl(2.4, 3, 10, 8), dk, 0, 3, 0);
+        add(gun, g.sph(3.4, 8, 6), core(), 0, 11, 0, { shadow: false });
+        K.addGlow(gun, C.glow, 22, 0, 11, 0, 0.7);
+      }
+      gr.userData = { tunic: body, arm: pivot(gr), l1: pivot(gr), l2: pivot(gr), ranged: true, aura: null, phase: Math.random() * 10,
+        tick(u, e, time) {
+          if (e.moving) for (const w of wheels) w.rotation.z = -time * 5;
+          turret.rotation.y = -((e.aim ?? e.facing ?? 0) - (e.facing ?? 0));
+          barrel.position.x = -K.ease.bump(e.swing || 0) * 9;
+        } };
+      return K.shadowed(gr);
+    }
+  };
+
   function shot(s) {
     const gr = new THREE.Group();
     if (s.shot === 'arrow') {   // energy dart
@@ -455,6 +583,12 @@
       add(gr, g.sph(16, 12, 10), K.metal(0x2a2e34, 0.4), 0, 0, 0);
       add(gr, g.torus(16, 1.4, 4, 16), core(), 0, 0, 0, { shadow: false });
       add(gr, g.torus(16, 1.4, 4, 16), core(), 0, 0, 0, { ry: PI / 2, shadow: false });
+    } else if (s.shot === 'orb') {   // ball lightning
+      add(gr, g.sph(4.5, 8, 6), core(), 0, 0, 0, { shadow: false });
+      gr.add(K.glow(C.glow, 48, 0.95));
+    } else if (s.shot === 'shell') {   // arc shell
+      add(gr, g.sph(8, 10, 8), K.metal(0x2a2e34, 0.4), 0, 0, 0);
+      add(gr, g.torus(8, 1, 4, 12), core(), 0, 0, 0, { shadow: false });
     } else {   // missile
       add(gr, g.cyl(3, 3, 22, 8), K.metal(0xe8e8e8, 0.4), 0, 0, 0, { rz: PI / 2, shadow: false });
       add(gr, g.cone(3, 8, 8), K.m(K.teamHex(s.team)), 15, 0, 0, { rz: -PI / 2, shadow: false });
