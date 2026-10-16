@@ -1,8 +1,10 @@
 // Economy: gold. Fallen soldiers and destroyed buildings leave coin piles on the ground;
-// any living hero (either side) who walks over a pile pockets it. Heroes spend gold on buildings.
+// any living hero (either side) who walks over a pile pockets it. Every hero also earns a trickle of
+// passive income. Heroes spend gold on buildings.
 (function (G) {
   G.START_GOLD = 400;
   G.BUILDING_SALVAGE = 0.3;   // share of a building's cost left behind when it's destroyed
+  G.PASSIVE_INCOME = 1;       // gold a second every hero earns, fallen or not
   const PICKUP_REACH = 22;    // edge-to-edge distance at which a hero scoops up a pile
   const COIN_R = 10;          // pile radius at the smallest size
 
@@ -18,6 +20,11 @@
 
   // Called once per update step.
   G.updateCoins = function (dt) {
+    for (const h of G.entities) {
+      if (!(h instanceof G.Hero)) continue;
+      h.incomeT = (h.incomeT || 0) + dt * G.PASSIVE_INCOME;
+      if (h.incomeT >= 1) { const g = Math.floor(h.incomeT); h.gold += g; h.incomeT -= g; }
+    }
     const heroes = G.entities.filter(h => h instanceof G.Hero && !h.dead);
     for (const c of G.coins) {
       c.t += dt;

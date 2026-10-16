@@ -5,6 +5,7 @@
   G.particles = [];
   G.floaters = [];
   G.deathListeners = [];   // fn(entity) called whenever an entity dies
+  const POISON_HERO = 10, POISON_UNIT = 2;   // extra damage per hit on a poisoned target
 
   class Entity {
     constructor(x, y, r, maxHp, team) {
@@ -52,6 +53,8 @@
     }
     takeDamage(amount, src) {
       if (this.dead || this.untargetable) return 0;
+      // Poisoned (Blinkblade): every hit from a hero or a soldier lands harder.
+      if (this.marks.poison && src && !src.dot) amount += src.hero ? POISON_HERO : src.unit ? POISON_UNIT : 0;
       amount *= 1 - this.armor();
       if (this.shieldAmt > 0) {
         const soak = Math.min(this.shieldAmt, amount);
@@ -84,11 +87,11 @@
       if (this.shieldTimer > 0 && (this.shieldTimer -= dt) <= 0) this.endShield();
       if (this.dead) return;
       if (this.dots.length) {
-        let total = 0;
-        for (const d of this.dots) { d.t -= dt; total += d.dps * dt; }
+        let total = 0, by = null;   // by: a hero behind the burns, credited with the damage
+        for (const d of this.dots) { d.t -= dt; total += d.dps * dt; by = by || d.src; }
         this.dots = this.dots.filter(d => d.t > 0);
         const color = this.dots[0] ? this.dots[0].color : '#ff9a40';
-        this.takeDamage(total, { dot: true });
+        this.takeDamage(total, { dot: true, hero: by });
         this.dotAcc += total;
         if (this.dotAcc >= 10 || (!this.dots.length && this.dotAcc >= 1)) {
           G.floaters.push({ x: this.x + (Math.random() - 0.5) * 16, y: this.y - this.r, text: String(Math.round(this.dotAcc)), t: 0, color });
@@ -115,8 +118,7 @@
       super(x, y, def.r || 18, def.hp, team);
       this.def = def;
       this.speed = def.speed;
-      this.maxMana = def.mana; this.mana = def.mana;
-      this.manaRegen = def.manaRegen || 9; this.hpRegen = def.hpRegen || 5;
+      this.hpRegen = def.hpRegen || 5;
       this.target = null;
       this.facing = 0;
       this.cooldowns = {};
@@ -133,9 +135,11 @@
       this.lift = 0;              // height off the ground (leaps)
       this.moving = false;
       this.untargetable = false;
+      this.invisible = false;     // unseen by the enemy (Blinkblade's ultimate)
       this.history = [];          // recent { x, y, hp } samples, newest last (for rewinds)
       this.histT = 0;
       this.state = {};            // per-hero passive state
+      this.unlock = G.newUnlocks(); // ability unlock progress for this match (see unlocks.js)
       this.form = def.startForm || null;
       if (def.init) def.init(this);
     }
@@ -143,11 +147,16 @@
     get color() { return this.def.color; }
     armor() { return Math.min(0.8, super.armor() + (this.def.armor ? this.def.armor(this) : 0)); }
     moveTo(x, y) { this.target = { x, y }; this.stuckTime = 0; }
-    takeDamage(amount, src) { return G.dev ? 0 : super.takeDamage(amount, src); }
+    takeDamage(amount, src) {
+      if (G.dev) return 0;
+      const dealt = super.takeDamage(amount, src);
+      if (src && src.hero) G.noteDamage(src.hero, this, dealt);
+      return dealt;
+    }
     respawn(x, y) {
-      this.dead = false; this.hp = this.maxHp; this.mana = this.maxMana;
+      this.dead = false; this.hp = this.maxHp;
       this.target = null; this.attackTarget = null; this.demolishTarget = null; this.dash = null;
-      this.lift = 0; this.untargetable = false; this.history = [];
+      this.lift = 0; this.untargetable = false; this.invisible = false; this.history = [];
       this.resetStatus();
       this.x = x; this.y = y;
       if (this.def.init) this.def.init(this);
@@ -159,7 +168,6 @@
       super.update(dt);
       if (this.dead) return;
       const ox = this.x, oy = this.y;
-      this.mana = Math.min(this.maxMana, this.mana + this.manaRegen * dt);
       this.hp = Math.min(this.maxHp, this.hp + this.hpRegen * dt);
       for (const k in this.cooldowns) this.cooldowns[k] = Math.max(0, this.cooldowns[k] - dt);
       this.attackCd = Math.max(0, this.attackCd - dt * this.buffMul('atk'));
@@ -181,7 +189,7 @@
         else if (G.dist(this.x, this.y, b.x, b.y) <= b.r + this.r + DEMOLISH_REACH) {
           this.demolishTarget = null;
           this.target = null;
-          G.destroyBuilding(b);  // leaves its salvage coins for the hero to pick up
+          G.destroyBuilding(b, this);  // leaves its salvage coins for the hero to pick up
           return;
         } else {
           const d = G.dist(this.x, this.y, b.x, b.y) || 1;
@@ -192,7 +200,7 @@
 
       if (this.attackTarget) {
         const t = this.attackTarget, b = this.basic;
-        if (t.dead || t.untargetable) this.attackTarget = null;
+        if (t.dead || t.untargetable || (t.invisible && t.team !== this.team)) this.attackTarget = null;
         else if (G.dist(this.x, this.y, t.x, t.y) <= this.r + t.r + b.range) {
           this.target = null;
           this.facing = Math.atan2(t.y - this.y, t.x - this.x);
@@ -204,12 +212,14 @@
       }
 
       if (!this.target) return;
-      const dx = this.target.x - this.x, dy = this.target.y - this.y;
+      // Walls in the way: head for a gate (or around the wall) first.
+      const via = G.steer(this, this.target.x, this.target.y), goal = via && !via.wall ? via : this.target;
+      const dx = goal.x - this.x, dy = goal.y - this.y;
       const d = Math.hypot(dx, dy);
       const step = this.speed * this.speedMul * dt;
       if (step <= 0) return;  // rooted
       this.moving = true;
-      if (d <= step) { this.x = this.target.x; this.y = this.target.y; G.map.resolve(this); this.target = null; return; }
+      if (d <= step) { this.x = goal.x; this.y = goal.y; G.map.resolve(this); if (goal === this.target) this.target = null; return; }
       this.facing = Math.atan2(dy, dx);
       this.x += (dx / d) * step;
       this.y += (dy / d) * step;
@@ -254,7 +264,7 @@
       let arrived = dist <= step;
       if (!arrived) {
         const nx = this.x + dx / dist * step, ny = this.y + dy / dist * step;
-        if (!d.arc && G.map.blocked(nx, ny, this.r)) arrived = true;
+        if (!d.arc && G.map.blocked(nx, ny, this.r, this.team)) arrived = true;
         else { this.x = nx; this.y = ny; }
       } else { this.x = d.tx; this.y = d.ty; }
       const k = G.clamp(1 - Math.hypot(d.tx - this.x, d.ty - this.y) / total, 0, 1);
@@ -334,7 +344,7 @@
       p.traveled += p.speed * dt;
       if (p.trail !== null && Math.random() < 0.7) G.particles.push({ x: p.x, y: p.y, h: p.h, vx: 0, vy: 0, life: 0.3, t: 0, color: p.trail || p.color, size: 3 });
       if (p.homing) continue;
-      if (p.traveled >= p.range || G.map.hitsRock(p.x, p.y, p.r)) {
+      if (p.traveled >= p.range || G.map.hitsRock(p.x, p.y, p.r, p.team, true)) {
         p.dead = true;
         if (p.onEnd) p.onEnd(p); else G.burst(p.x, p.y, p.color, 10, 120);
         continue;

@@ -71,45 +71,58 @@
   }
 
   // =============================================================================================
-  // 1. BANNERSPEAR — plate-armored Human with spear, kite shield and a war banner on the back
+  // 1. BANNERSPEAR — plate-armored Human woman, bareheaded with a long braid, spear, kite shield and a
+  //    war banner on the back
   // =============================================================================================
   R.HERO_MODELS.bannerspear = function (team) {
     const root = new THREE.Group();
     const plate = K.mat(0xa8b0ba, { metalness: 0.7, roughness: 0.32 });
     const gold = K.metal(0xd9a530, 0.3), leather = K.m(0x3a2a1e), dark = K.m(0x1a1512);
     const teamM = K.mat(K.teamHex(team), { side: THREE.DoubleSide });
-    const skin = K.m(0xd8a888);
+    const skin = K.m(0xe2b294), hair = K.mat(0x7a3418, { flatShading: false, roughness: 0.75 });
     const u = humanoid(root, {
-      legLen: 26, hipW: 5, legR: 3.6, legMat: plate, shinMat: plate, bootMat: dark,
-      torsoH: 22, chestR: 11, waistR: 8.5, depth: 0.72, bodyMat: plate,
-      shoulderW: 12.5, armLen: 22, armR: 3.2, armMat: leather, foreMat: plate, handMat: K.m(0x4a3a2a)
+      legLen: 26, hipW: 4.6, legR: 3.2, legMat: plate, shinMat: plate, bootMat: dark,
+      torsoH: 22, chestR: 10.5, waistR: 7, depth: 0.72, bodyMat: plate,
+      shoulderW: 12, armLen: 22, armR: 2.9, armMat: leather, foreMat: plate, handMat: K.m(0x4a3a2a)
     });
     const T = u.torso;
-    // Breastplate ridge, gold trim, belt, team tabard front and back.
-    add(T, g.box(2, 18, 3), gold, 7.5, 12, 0);
-    add(T, g.torus(9.2, 1, 4, 16), gold, 0, 21, 0, { rx: PI / 2, sx: 0.75 });
-    add(T, g.cyl(9, 9, 3, 10), leather, 0, 1.5, 0, { sx: 0.8 });
-    add(T, g.box(3, 3, 4), gold, 7.6, 1.5, 0);
-    const tabF = add(T, g.box(0.8, 22, 11), teamM, 7.8, -6, 0);
-    add(T, g.box(0.8, 22, 11), teamM, -7.4, -6, 0);
-    add(T, g.box(0.9, 3, 11.4), gold, 8, -16, 0);
-    add(T, g.cone(2.4, 6, 4), K.lit(0xffd060), 8.3, -4, 0, { rz: PI });   // spear emblem
+    // Shaped breastplate with a gold ridge and trim, a cinched belt, a flared plate skirt and the team
+    // tabard front and back.
+    add(T, g.box(1.6, 9, 2.4), gold, 7, 9, 0);
+    add(T, g.sph(5.4, 12, 8), plate, 4, 14.5, 0, { sx: 0.7, sy: 0.85, sz: 1.35 });
+    add(T, g.torus(8.8, 1, 4, 16), gold, 0, 21, 0, { rx: PI / 2, sx: 0.75 });
+    add(T, g.cyl(7.6, 7.6, 3, 10), leather, 0, 1.5, 0, { sx: 0.8 });
+    add(T, g.box(3, 3, 4), gold, 6.4, 1.5, 0);
+    add(T, g.cyl(7.6, 11.5, 11, 12, true), plate, 0, -4.5, 0, { sx: 0.8 });
+    add(T, g.torus(11.3, 0.8, 4, 16), gold, 0, -10, 0, { rx: PI / 2, sx: 0.8 });
+    add(T, g.box(0.8, 22, 10), teamM, 9.6, -6, 0);
+    add(T, g.box(0.8, 22, 10), teamM, -9.4, -6, 0);
+    add(T, g.box(0.9, 3, 10.4), gold, 9.8, -16, 0);
+    add(T, g.cone(2.4, 6, 4), K.lit(0xffd060), 10.1, -4, 0, { rz: PI });   // spear emblem
     // Layered pauldrons with gold rims.
     for (const s of [-1, 1]) {
-      add(T, g.dome(7, 10, 5), plate, 0, 19, s * 13, { rx: s * 0.4 });
-      add(T, g.torus(6.6, 0.9, 4, 12), gold, 0, 19.3, s * 13.6, { rx: PI / 2 + s * 0.4 });
-      add(T, g.dome(5.5, 10, 5), plate, 0, 16, s * 15, { rx: s * 0.7 });
+      add(T, g.dome(6.4, 10, 5), plate, 0, 19, s * 12.4, { rx: s * 0.4 });
+      add(T, g.torus(6, 0.8, 4, 12), gold, 0, 19.3, s * 13, { rx: PI / 2 + s * 0.4 });
+      add(T, g.dome(5, 10, 5), plate, 0, 16, s * 14.2, { rx: s * 0.7 });
     }
-    add(T, g.cyl(5.5, 6.5, 4, 10), plate, 0, 23, 0);     // gorget
-    // Helm: crested great helm with a T-visor and cheek guards, face just visible.
+    add(T, g.cyl(4.6, 5.8, 3, 10), plate, 0, 22.5, 0);     // low gorget
+    // Bare head: an oval face and auburn hair swept back into a long braid down her back.
     const H = u.head;
-    add(H, g.sph(5.2, 10, 8), skin, 0.6, 5, 0);
-    add(H, g.cyl(6.4, 6.6, 9, 12), plate, 0, 6, 0);
-    add(H, g.dome(6.5, 12, 6), plate, 0, 10.5, 0);
-    add(H, g.box(1, 1.6, 9), dark, 6.4, 7.5, 0);
-    add(H, g.box(1, 6, 1.8), dark, 6.4, 5, 0);
-    add(H, g.box(14, 1.2, 1.4), gold, 0, 16.6, 0);
-    for (let i = 0; i < 6; i++) add(H, g.cone(1.6, 9 + i, 4), K.m(i % 2 ? 0xc8302a : 0xe8c060), -4 + i * 1.6, 18 + i * 0.6, 0, { rz: 0.9 - i * 0.12 });
+    add(H, g.cyl(2.2, 2.6, 4, 8), skin, 0, 1, 0);                                     // neck
+    add(H, g.sph(4.6, 12, 10), skin, 0.5, 6.4, 0, { sx: 0.95, sy: 1.15, sz: 0.85 });  // face
+    add(H, g.cone(0.8, 2, 4), skin, 4.8, 6.2, 0, { rz: -PI / 2 });                     // nose
+    for (const z of [-1.6, 1.6]) {
+      add(H, g.sph(0.65, 6, 5), K.m(0x2a1a14), 4.1, 7.3, z, { shadow: false });                // eyes
+      add(H, g.box(0.5, 0.4, 1.7), hair, 4.2, 8.5, z * 1.05, { rx: z * 0.15, shadow: false });  // brows
+    }
+    add(H, g.box(0.6, 0.6, 1.8), K.m(0xb04a48), 4.55, 4.3, 0, { shadow: false });         // lips
+    add(H, g.dome(5.1, 14, 8, PI * 0.5), hair, -0.6, 8.4, 0, { rz: 0.3, sx: 1.05, sz: 0.92, shadow: false });   // hair, swept back
+    add(H, g.sph(4.8, 10, 8), hair, -1.8, 5.6, 0, { sx: 0.8, sy: 1.15, sz: 0.95 });      // back of the hair
+    for (const z of [-1, 1]) add(H, g.box(3, 9.5, 1.2), hair, 0.8, 3.8, z * 4.1, { rz: -0.12 });  // long locks framing the face
+    const braid = pivot(H, -4.6, 4.5, 1.2);
+    for (let i = 0; i < 7; i++) add(braid, g.sph(1.9 - i * 0.12, 7, 6), hair, -i * 0.55, -i * 2.9, i * 0.25, { sy: 1.3 });
+    add(braid, g.cyl(1.1, 1.1, 1.4, 8), gold, -4, -20, 1.8);
+    add(braid, g.cone(1.2, 3.5, 6), hair, -4.1, -22.4, 1.8, { rz: PI });
     // Spear: ash shaft, gold collar, leaf blade, red tassel. Hangs along -y from the right hand.
     const spear = pivot(u.handR, 0, -2, 0);
     add(spear, g.cyl(1.1, 1.1, 96, 6), K.m(0x6b4a2a), 0, -22, 0);
@@ -140,20 +153,24 @@
       const sw = walk(u, e, time);
       flag.wave(time, 0.18);
       const k = e.swing, c = e.castAnim, slot = e.castSlot;
-      const atk = smoothTo(u, 'atk', k > 0 || (c > 0 && slot === 0) ? 1 : 0, 0.3);
+      const atk = smoothTo(u, 'atk', k > 0 ? 1 : 0, 0.3);
       let armZ = lerp(0.35 - sw * 0.25, 0.9, atk), bend = lerp(0.55, 0.15, atk);
       let pitch = lerp(PI - 0.15, PI / 2 + 0.05, atk);
       let shZ = 0.45 + sw * 0.2, shBend = 0.95, lean = 0, lunge = 0;
       const ws = ease.windStrike(k);
       armZ += ws * 0.7; lean -= ws * 0.12; lunge += ws * 4;
       if (c > 0) {
-        if (slot === 0) { const w = ease.windStrike(c, 0.3); armZ = 0.9 + w * 0.8; bend = 0.05; pitch = PI / 2; lean = -w * 0.25; lunge = w * 12; }
-        if (slot === 1) { shZ = 1.45; shBend = 0.25; lean = -0.3; armZ = 0.1; }
-        if (slot === 2) { const b = ease.bump(c); armZ = lerp(0.35, 2.7, b); bend = 0.2; pitch = lerp(PI, 0.15, c < 0.5 ? (0.5 - c) * 2 : 0); lean = -0.15 * b; }
-        if (slot === 3 && e.lift <= 0) { const b = ease.bump(c); armZ = 1.2 - b * 0.4; pitch = 0.3; lean = -0.3 * b; }
+        if (slot === 2) {
+          // Unbreakable Wall: a shove behind the shield.
+          const w = ease.windStrike(c, 0.3); shZ = 1.45; shBend = 0.25; lean = -0.3 * w; lunge = w * 10; armZ = 0.1;
+        } else {
+          // Banners (Q, W, R): raise the spear high, then drive it down to plant. The ultimate goes bigger.
+          const b = ease.bump(c);
+          armZ = lerp(0.35, 2.7, b); bend = 0.2; pitch = lerp(PI, 0.15, c < 0.5 ? (0.5 - c) * 2 : 0);
+          lean = -0.15 * b * (slot === 3 ? 1.5 : 1);
+          if (slot === 3) shZ = 0.45 + b * 0.6;
+        }
       }
-      if (e.lift > 0) { armZ = 2.8; bend = 0.1; pitch = 0.25; shZ = 0.9; lean = 0.15; }
-      if (e.dash && slot === 1) { shZ = 1.45; shBend = 0.25; lean = -0.35; }
       pose(u.armR, u.elbowR, armZ, 0.15, bend, 1);
       pose(u.armL, u.elbowL, shZ, 0.25, shBend, -1);
       aim(spear, u.armR, u.elbowR, pitch);
@@ -162,8 +179,11 @@
       u.hips.position.x = lunge;
       tip.material.opacity = Math.max(atk * 0.8, c > 0 ? 1 : 0);
       u.head.rotation.z = Math.sin(time * 1.3) * 0.03;
+      // The braid hangs straight down whatever her lean, swinging with each stride.
+      braid.rotation.z = -lean - u.head.rotation.z + (e.moving ? Math.sin(time * 11) * 0.12 : Math.sin(time * 1.7) * 0.03);
+      braid.rotation.x = sw * 0.12;
     }
-    return finish(root, 1.5, (_, e, t) => animate(u, e, t), [plate], { u });
+    return finish(root, 1.18, (_, e, t) => animate(u, e, t), [plate], { u });
   };
 
   // =============================================================================================
@@ -230,7 +250,7 @@
     for (let i = 0; i < 3; i++) { const ch = pivot(staff, 0, -70, (i - 1) * 3); ch.rotation.z = PI; add(ch, g.cyl(0.3, 0.3, 8, 4), dark, 0, -4, 0); add(ch, g.sph(1.4, 5, 4), bone, 0, -8.5, 0); }
     // Left hand: necrotic glow for casting.
     const handGlow = K.addGlow(u.handL, green, 26, 0, -3, 0, 0.5);
-    // Orbiting bone shards (always a few; a full ring while Bone Armor holds).
+    // Orbiting bone shards (always a few; a full ring while Back Again holds).
     const orbit = pivot(root, 0, 32, 0);
     const shards = [];
     for (let i = 0; i < 8; i++) {
@@ -265,8 +285,8 @@
       flame.scale.set(40 * f, 52 * f, 1); flame2.material.opacity = 0.6 + (k > 0 ? 0.4 : 0);
       handGlow.material.opacity = c > 0 ? 0.95 : 0.4 + Math.sin(time * 3) * 0.1;
       eyes.material.opacity = 0.7 + Math.sin(time * 5) * 0.2;
-      // Bone orbit: lazy and sparse normally, a tight fast ring during Bone Armor.
-      const armored = e.state.orbit > 0;
+      // Bone orbit: lazy and sparse normally, a tight fast ring during Back Again.
+      const armored = e.state.backAgain > 0;
       shards.forEach((s, i) => {
         const vis = armored || i < 3;
         s.visible = vis;
@@ -275,7 +295,7 @@
         s.rotation.y = -a;
       });
     }
-    return finish(root, 1.55, (_, e, t) => animate(u, e, t), [robe, bone], { u });
+    return finish(root, 1.25, (_, e, t) => animate(u, e, t), [robe, bone], { u });
   };
 
   // =============================================================================================
@@ -384,7 +404,7 @@
         s.material.opacity = (1 - f) * 0.5;
       });
     }
-    return finish(root, 1.5, (_, e, t) => animate(u, e, t), [skin, armor], { u });
+    return finish(root, 1.25, (_, e, t) => animate(u, e, t), [skin, armor], { u });
   };
 
   // =============================================================================================
@@ -506,7 +526,7 @@
         s.position.set(Math.cos(a) * r, 30 + Math.sin(time * 3 + i) * 14, Math.sin(a) * r);
       });
     }
-    return finish(root, 1.5, (_, e, t) => animate(u, e, t), [chitin], { u });
+    return finish(root, 1.24, (_, e, t) => animate(u, e, t), [chitin], { u });
   };
 
   // =============================================================================================
@@ -572,7 +592,7 @@
     add(T, g.torus(4, 1.4, 4, 12), teamM, 0, 16.5, 0, { rx: PI / 2 });
 
     function animate(u, e, time) {
-      const fast = e.buffs.overclock ? 1 : 0;
+      const fast = e.buffs.goFast || e.buffs.speedUp ? 1 : 0;
       const sw = walk(u, e, time, 15 + fast * 6, 0.7);
       const k = e.swing, c = e.castAnim, slot = e.castSlot;
       const ws = ease.windStrike(k, 0.25);
@@ -600,7 +620,7 @@
       scarf.mesh.rotation.z = e.moving ? 0.6 : 1.2;
       hand.rotation.z = -time * 2;
     }
-    return finish(root, 1.3, (_, e, t) => animate(u, e, t), [coat], { u });
+    return finish(root, 1.42, (_, e, t) => animate(u, e, t), [coat], { u });
   };
 
   // =============================================================================================
@@ -705,7 +725,7 @@
       });
     }
     const st = {};
-    return finish(root, 1.7, (_, e, t) => animate(st, e, t), [shell, shellHi], {});
+    return finish(root, 1.60, (_, e, t) => animate(st, e, t), [shell, shellHi], {});
   };
 
   // =============================================================================================
@@ -790,7 +810,7 @@
       tailSegs.forEach((s, i) => { s.rotation.y = Math.sin(time * 3 + i * 0.7) * 0.3; s.rotation.z = i ? 0.08 : -0.3; });
       eyes.material.opacity = 0.4 + Math.sin(time * 4) * 0.2;
     }
-    return finish(root, 1.3, (_, e, t) => animate(u, e, t), [fur], { u });
+    return finish(root, 1.46, (_, e, t) => animate(u, e, t), [fur], { u });
   };
 
   // =============================================================================================
@@ -881,7 +901,7 @@
         s.material.opacity = (1 - p) * 0.9;
       });
     }
-    return finish(root, 1.55, (_, e, t) => animate(u, e, t), [rock, rockHi], { u });
+    return finish(root, 1.31, (_, e, t) => animate(u, e, t), [rock, rockHi], { u });
   };
 
   // =============================================================================================
@@ -972,11 +992,11 @@
       light.intensity = 0.8 * f;
       u.head.rotation.y = Math.sin(time * 0.7) * 0.1;
     }
-    return finish(root, 1.75, (_, e, t) => animate(u, e, t), [hide], { u });
+    return finish(root, 1.30, (_, e, t) => animate(u, e, t), [hide], { u });
   };
 
   // =============================================================================================
-  // Summons: Skeleton warrior and Bone Colossus (soldier contract: tunic, arm, l1, l2)
+  // Summons: Skeleton warrior and Bone Ball (soldier contract: tunic, arm, l1, l2)
   // =============================================================================================
   R.SUMMON_MODELS.skeleton = function (team) {
     const g0 = new THREE.Group();
@@ -1005,52 +1025,85 @@
   };
   R.SUMMON_MODELS.skeletonSolo = R.SUMMON_MODELS.skeleton;
 
-  R.SUMMON_MODELS.colossus = function (team) {
+  // Charlie, the Bannerspear's squire: a stocky lad in a team-colored jerkin and kettle hat, hauling a
+  // tower shield nearly as tall as he is.
+  R.SUMMON_MODELS.charlie = function (team) {
     const g0 = new THREE.Group();
-    const bone = K.mat(0xd8d0b8), boneDark = K.m(0xa89e84), green = 0x9ff0b8;
-    const l1 = pivot(g0, 0, 22, 9), l2 = pivot(g0, 0, 22, -9);
-    for (const l of [l1, l2]) {
-      add(l, g.cyl(3.2, 2.6, 22, 7), bone, 0, -11, 0);
-      add(l, g.sph(3.6, 7, 6), boneDark, 0, -11, 0);
-      add(l, g.box(9, 3, 7), bone, 2, -21, 0);
+    const jerkin = K.mat(K.teamHex(team)), leather = K.m(0x5a3e26), dark = K.m(0x2a2018);
+    const skin = K.m(0xe0b090), iron = K.metal(0x8a929c, 0.4), gold = K.metal(0xd9a530, 0.3);
+    const l1 = pivot(g0, 0, 14, 3.6), l2 = pivot(g0, 0, 14, -3.6);
+    for (const l of [l1, l2]) { add(l, g.cyl(2.2, 1.9, 13, 6), leather, 0, -6.5, 0); add(l, g.box(5.5, 2.4, 3.6), dark, 1, -13, 0); }
+    add(g0, g.cyl(7, 6.2, 15, 9), jerkin, 0, 21, 0, { sx: 0.8 });
+    add(g0, g.cyl(6.4, 6.4, 2.4, 9), leather, 0, 15, 0, { sx: 0.82 });
+    add(g0, g.box(2, 2, 2.6), gold, 5.2, 15, 0);
+    add(g0, g.sph(4.6, 10, 8), skin, 0.5, 33, 0);
+    for (const z of [-1.5, 1.5]) add(g0, g.sph(0.6, 5, 4), K.m(0x2a1a14), 4.4, 33.6, z, { shadow: false });
+    add(g0, g.sph(4.7, 8, 6), K.m(0x6a4424), -1, 34.5, 0, { sx: 0.9 });  // mop of hair
+    add(g0, g.cone(5.2, 4, 10), iron, 0, 38.5, 0);                        // kettle hat
+    add(g0, g.cyl(7.5, 7.5, 0.8, 12), iron, 0, 36.6, 0);
+    // Tower shield carried on the left, out in front.
+    add(g0, g.box(2, 30, 18), jerkin, 7, 20, -6);
+    add(g0, g.box(2.4, 31, 1.4), iron, 7.2, 20, 3);
+    add(g0, g.box(2.4, 31, 1.4), iron, 7.2, 20, -15);
+    add(g0, g.box(2.4, 1.4, 18), iron, 7.2, 35, -6);
+    add(g0, g.box(2.4, 1.4, 18), iron, 7.2, 5, -6);
+    add(g0, g.cyl(3, 3, 1, 8), gold, 8.4, 21, -6, { rz: PI / 2 });
+    // Right arm: a short pennant pole over the shoulder.
+    const arm = pivot(g0, 0, 27, 7);
+    add(arm, g.cyl(1.8, 1.6, 10, 6), jerkin, 0, -4, 0);
+    add(arm, g.sph(1.9, 6, 5), skin, 0, -9.5, 0);
+    add(arm, g.cyl(0.6, 0.6, 30, 5), K.m(0x4a3320), 0, 2, 0);
+    add(arm, g.box(0.4, 7, 9), jerkin, -0.5, 13, 4.5);
+    g0.userData = { tunic: jerkin, arm, l1, l2, ranged: false, aura: null, phase: Math.random() * 10 };
+    g0.scale.setScalar(1.25);
+    return K.shadowed(g0);
+  };
+
+  // Bone Ball: the dead packed into a great sphere of bones and skulls around a soul-fire core. It rolls
+  // as it moves and swells as it absorbs skeletons. No legs or weapon arm: those pivots stay empty.
+  R.SUMMON_MODELS.boneBall = function (team) {
+    const g0 = new THREE.Group();
+    const bone = K.mat(0xd8d0b8), boneDark = K.m(0xa89e84), green = 0x9ff0b8, R0 = 22;
+    const ball = pivot(g0, 0, R0 + 4, 0);
+    add(ball, g.ico(R0 - 2, 1), K.m(0x2e3428), 0, 0, 0);
+    const up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), t = new THREE.Vector3(), q = new THREE.Vector3();
+    const onSphere = () => v.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+    // Long bones lying across the surface, knobbed at both ends.
+    for (let i = 0; i < 34; i++) {
+      onSphere();
+      t.crossVectors(v, q.set(Math.random(), Math.random(), Math.random())).normalize();
+      const b = pivot(ball, v.x * R0, v.y * R0, v.z * R0);
+      b.quaternion.setFromUnitVectors(up, t);
+      const len = 12 + Math.random() * 8, mat = i % 3 ? bone : boneDark;
+      add(b, g.cyl(1.4, 1.4, len, 5), mat, 0, 0, 0);
+      add(b, g.sph(2.2, 6, 5), mat, 0, len / 2, 0); add(b, g.sph(2.2, 6, 5), mat, 0, -len / 2, 0);
     }
-    // Pelvis, a spine of stacked vertebrae, a vast ribcage around a soul-fire core.
-    add(g0, g.box(9, 6, 22), bone, 0, 24, 0);
-    for (let i = 0; i < 6; i++) add(g0, g.cyl(3, 3.2, 3.2, 7), boneDark, -4, 28 + i * 4, 0);
-    for (let i = 0; i < 6; i++) add(g0, g.torus(13 - Math.abs(i - 2.5) * 1.2, 1.4, 4, 14, PI * 1.35), bone, 1, 32 + i * 4.2, 0, { rx: PI / 2, rz: -PI * 0.67 });
-    add(g0, g.ico(5, 1), K.lit(green), 2, 42, 0, { shadow: false });
-    const core = K.addGlow(g0, green, 70, 2, 42, 0, 0.8);
-    // Shoulders of piled skulls, and a horned skull head.
-    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) add(g0, g.sph(4, 7, 6), bone, -2 + i * 2.5, 58 + (i % 2) * 2, s * (15 + i));
-    add(g0, g.sph(8, 10, 8), bone, 2, 68, 0, { sy: 1.1 });
-    add(g0, g.box(8, 5, 9), bone, 7, 62.5, 0);
-    for (let i = 0; i < 6; i++) add(g0, g.cone(0.9, 3, 4), K.m(0xf0ead8), 10.5, 60.5, -3.5 + i * 1.4, { rz: PI });
-    for (const z of [-3, 3]) { add(g0, g.sph(2, 6, 5), K.m(0x0a0a08), 8, 70, z); add(g0, g.sph(1.2, 6, 5), K.lit(green), 9, 70, z, { shadow: false }); }
-    for (const s of [-1, 1]) add(g0, g.torus(8, 2, 5, 10, PI * 1.1), boneDark, 0, 76, s * 8, { ry: s * 0.3, rz: 0.4 });
-    // Left arm hanging, right arm wielding a femur club studded with teeth.
-    const armL = pivot(g0, 0, 58, -18);
-    add(armL, g.cyl(2.6, 2.2, 22, 6), bone, 0, -11, 0); add(armL, g.cyl(2.2, 1.8, 20, 6), bone, 2, -30, 0, { rz: 0.2 });
-    add(armL, g.sph(4, 7, 6), boneDark, 4, -42, 0);
-    const arm = pivot(g0, 0, 58, 18);
-    add(arm, g.sph(5, 7, 6), boneDark, 0, 0, 0);
-    add(arm, g.cyl(3.2, 4.2, 44, 7), bone, 0, 26, 0);
-    add(arm, g.sph(7, 8, 6), bone, 0, 50, 0, { sx: 1.2 });
-    for (let i = 0; i < 6; i++) add(arm, g.cone(1.4, 6, 4), K.m(0xf0ead8), Math.cos(i) * 6, 46 + i * 1.5, Math.sin(i) * 6, { rz: -Math.cos(i), rx: Math.sin(i) });
-    const wisps = [];
-    for (let i = 0; i < 6; i++) { const s = K.glow(green, 22, 0.7); g0.add(s); wisps.push(s); }
+    // Skulls staring outward, eyes lit with soul-fire.
+    for (let i = 0; i < 8; i++) {
+      onSphere();
+      const s = pivot(ball, v.x * (R0 + 1), v.y * (R0 + 1), v.z * (R0 + 1));
+      s.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), v);
+      add(s, g.sph(5, 8, 6), bone, 0, 0, 0, { sy: 1.1 });
+      add(s, g.box(3, 3, 5), bone, 3, -3.5, 0);
+      for (const z of [-1.8, 1.8]) add(s, g.sph(1.2, 5, 4), K.lit(green), 4.2, 0.8, z, { shadow: false });
+    }
+    for (let i = 0; i < 10; i++) { onSphere(); add(ball, g.oct(2), K.lit(green), v.x * (R0 - 1), v.y * (R0 - 1), v.z * (R0 - 1), { shadow: false }); }
+    const glow = K.addGlow(g0, green, 110, 0, R0 + 4, 0, 0.35);
+    const arm = pivot(g0, 0, R0, 0), l1 = pivot(g0, 0, 0, 4), l2 = pivot(g0, 0, 0, -4);
     g0.userData = {
-      tunic: bone, arm, l1, l2, ranged: false, aura: null, phase: Math.random() * 10,
+      tunic: bone, arm, l1, l2, ball, ranged: false, aura: null, phase: Math.random() * 10,
       tick(u, e, time) {
-        core.material.opacity = 0.6 + Math.sin(time * 4) * 0.25;
-        armL.rotation.z = Math.sin(time * 1.5) * 0.15;
-        wisps.forEach((s, i) => {
-          const f = (time * 0.5 + i / 6) % 1, a = i * 1.05 + time;
-          s.position.set(Math.cos(a) * 10, 34 + f * 40, Math.sin(a) * 10);
-          s.material.opacity = (1 - f) * 0.7;
-        });
+        // Roll forward (+x) by the distance covered since last frame.
+        const d = u.lx === undefined ? 0 : Math.hypot(e.x - u.lx, e.y - u.ly);
+        u.lx = e.x; u.ly = e.y;
+        if (d < 60) ball.rotation.z -= d / (R0 + 4);
+        // Swells with every skeleton absorbed (400 max health to start).
+        const s = Math.min(1.7, Math.cbrt(e.maxHp / 400));
+        ball.scale.setScalar(s); ball.position.y = (R0 + 4) * s;
+        glow.material.opacity = 0.3 + Math.sin(time * 4) * 0.1;
       }
     };
-    g0.scale.setScalar(2.4);
+    g0.scale.setScalar(1.25);
     return K.shadowed(g0);
   };
 })(window.Game);

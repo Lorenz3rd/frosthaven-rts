@@ -1,5 +1,5 @@
 // HUD: DOM-based ability bar (Q W E R with cooldown sweeps, a passive pip on the third, the ultimate
-// set apart) plus hero name, HP / mana bars and gold. Hovering an ability shows its description.
+// set apart) plus hero name, HP bar and gold. Hovering an ability shows its description.
 // One panel per player: split screen copies the #hud panel for the second player, one under each half.
 (function (G) {
   let tip;
@@ -20,7 +20,6 @@
     const hero = player.hero, def = hero.def;
     const q = sel => root.querySelector(sel);
     const hpFill = q('.bar.hp .fill'), hpText = q('.bar.hp span');
-    const manaFill = q('.bar.mana .fill'), manaText = q('.bar.mana span');
     const goldText = q('.gold');
     const name = q('.heroName');
     name.textContent = (player.label ? player.label + ' · ' : '') + `${def.name} · ${def.role}`;
@@ -28,7 +27,13 @@
     const bar = q('.abilities');
     bar.innerHTML = '';
     const slots = [];
-    let pipText = null;
+    let pip = null, pipText = null, hovered = null;
+    // A locked ability (or passive) says what opens it, with progress so far.
+    const lockLine = k => {
+      if (G.isUnlocked(hero, k)) return '';
+      const p = G.unlockProgress(hero, k);
+      return `<br><span class="lockReq">🔒 ${p.text} · ${p.have}/${p.need}</span>`;
+    };
     def.abilities.forEach((ab, i) => {
       const key = player.keyboard ? ab.key.toUpperCase() : PAD_KEYS[i];
       const el = document.createElement('div');
@@ -36,47 +41,58 @@
       el.style.setProperty('--hero', def.css);
       el.innerHTML =
         `<div class="icon">${ab.icon}</div><div class="sweep"></div><div class="cd"></div>` +
-        `<div class="key">${key}</div><div class="cost">${ab.mana}</div>`;
+        `<div class="key">${key}</div><div class="prog"></div>`;
       if (i === 2) {
         // The third ability also carries the hero's passive.
-        const p = document.createElement('div');
-        p.className = 'passive';
-        p.innerHTML = `<span>${def.passive.icon}</span><b></b>`;
-        el.appendChild(p);
-        pipText = p.querySelector('b');
+        pip = document.createElement('div');
+        pip.className = 'passive';
+        pip.innerHTML = `<span>${def.passive.icon}</span><b></b>`;
+        el.appendChild(pip);
+        pipText = pip.querySelector('b');
       }
       // The third ability's description also summarizes the passive; the tooltip lists it on its own.
-      const text = `<b>${ab.name}</b> <i>${key} · ${ab.cooldown}s · ${ab.mana} mana</i><br>${ab.desc.split(' Passive —')[0]}` +
-        (i === 2 ? `<br><br><b>Passive — ${def.passive.name}</b><br>${def.passive.desc}` : '');
+      const tipHtml = () => `<b>${ab.name}</b> <i>${key} · ${ab.cooldown}s</i>${lockLine(ab.key)}<br>${ab.desc.split(' Passive —')[0]}` +
+        (i === 2 ? `<br><br><b>Passive — ${def.passive.name}</b>${lockLine('passive')}<br>${def.passive.desc}` : '');
+      const slot = { ab, el, tipHtml, sweep: el.querySelector('.sweep'), cd: el.querySelector('.cd'), prog: el.querySelector('.prog') };
       el.addEventListener('mouseenter', () => {
-        tip.innerHTML = text; tip.hidden = false;
+        hovered = slot;
+        tip.innerHTML = tip._html = tipHtml(); tip.hidden = false;
         // Show the tip above this panel.
         const r = root.getBoundingClientRect();
         tip.style.left = (r.left + r.width / 2) + 'px';
       });
-      el.addEventListener('mouseleave', () => { tip.hidden = true; });
+      el.addEventListener('mouseleave', () => { hovered = null; tip.hidden = true; });
       bar.appendChild(el);
-      slots.push({ ab, el, sweep: el.querySelector('.sweep'), cd: el.querySelector('.cd') });
+      slots.push(slot);
     });
 
     return function update() {
       style(hpFill, 'width', (100 * hero.hp / hero.maxHp).toFixed(1) + '%');
       text(hpText, `${Math.ceil(hero.hp)} / ${hero.maxHp}` + (hero.shieldAmt > 0 ? ` (+${Math.ceil(hero.shieldAmt)})` : ''));
-      style(manaFill, 'width', (100 * hero.mana / hero.maxMana).toFixed(1) + '%');
-      text(manaText, `${Math.floor(hero.mana)} / ${hero.maxMana}`);
       text(goldText, G.dev ? '● ∞ gold' : `● ${hero.gold} gold`);
-      if (pipText) text(pipText, hero.def.passiveText ? hero.def.passiveText(hero) : '');
+      if (pip) {
+        const open = G.isUnlocked(hero, 'passive');
+        toggle(pip, 'locked', !open);
+        text(pipText, !open ? '🔒' : hero.def.passiveText ? hero.def.passiveText(hero) : '');
+      }
 
       for (const s of slots) {
-        const left = hero.cooldowns[s.ab.key] || 0;
+        const open = G.isUnlocked(hero, s.ab.key);
+        const left = open ? hero.cooldowns[s.ab.key] || 0 : 0;
         const frac = left / s.ab.cooldown;
         style(s.sweep, 'background', left > 0
           ? `conic-gradient(rgba(5,15,25,0.72) ${(frac * 360).toFixed(1)}deg, transparent 0)`
           : 'none');
-        text(s.cd, left > 0 ? String(left >= 1 ? Math.ceil(left) : left.toFixed(1)) : '');
-        toggle(s.el, 'nomana', hero.mana < s.ab.mana);
-        toggle(s.el, 'ready', left <= 0 && hero.mana >= s.ab.mana);
+        text(s.cd, !open ? '🔒' : left > 0 ? String(left >= 1 ? Math.ceil(left) : left.toFixed(1)) : '');
+        if (!open) { const p = G.unlockProgress(hero, s.ab.key); text(s.prog, `${p.have}/${p.need}`); }
+        else text(s.prog, '');
+        // Flash the slot the moment it opens.
+        if (s.wasLocked && open) { s.el.classList.remove('unlocked'); void s.el.offsetWidth; s.el.classList.add('unlocked'); }
+        s.wasLocked = !open;
+        toggle(s.el, 'locked', !open);
+        toggle(s.el, 'ready', open && left <= 0);
       }
+      if (hovered && !tip.hidden) { const html = hovered.tipHtml(); if (tip._html !== html) { tip._html = html; tip.innerHTML = html; } }
     };
   }
 

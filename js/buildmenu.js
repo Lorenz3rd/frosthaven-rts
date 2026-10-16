@@ -5,21 +5,26 @@
   // `page` opens a submenu instead of building.
   const MAIN = [
     { type: 'hut', icon: '⌂', hotkey: '1' },
-    { page: 'tower', name: 'Tower', icon: '♜', hotkey: '2' },
+    { page: 'defense', name: 'Defense', icon: '♜', hotkey: '2' },
     { page: 'barracks', name: 'Barracks', icon: '⚔', hotkey: '3' },
     { page: 'allies', name: 'Allies', icon: '✚', hotkey: '4' },
     // Developer mode: build for the enemy side.
     { type: 'hut', icon: '⌂', hotkey: '5', enemy: true },
-    { page: 'tower', name: 'Tower', icon: '♜', hotkey: '6', enemy: true },
+    { page: 'defense', name: 'Defense', icon: '♜', hotkey: '6', enemy: true },
     { page: 'barracks', name: 'Barracks', icon: '⚔', hotkey: '7', enemy: true },
     { page: 'allies', name: 'Allies', icon: '✚', hotkey: '8', enemy: true }
   ];
-  const TOWER = [
+  // The Wall rings the whole base the slot is in, leaving the slot itself free (see G.buildWall).
+  const DEFENSE = [
     { type: 'digin', icon: '⛺', hotkey: '1' },
     { type: 'support', icon: '♜', hotkey: '2' },
     { type: 'siege', icon: '☄', hotkey: '3' },
-    { type: 'storm', icon: '☁', hotkey: '4' },
-    { name: 'Special', icon: '✦', hotkey: '5', disabled: true },  // TODO: to be implemented later
+    { type: 'wall', icon: '▥', hotkey: '4' },
+    { type: 'energy', icon: '⚡', hotkey: '5' },
+    { type: 'rock', icon: '●', hotkey: '6' },
+    { type: 'fortress', icon: '♖', hotkey: '7' },
+    { type: 'storm', icon: '☁', hotkey: '8' },
+    { name: 'Special', icon: '✦', hotkey: '9', disabled: true },  // TODO: to be implemented later
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
   const BARRACKS = [
@@ -55,7 +60,7 @@
     { type: 'allyDemolitionist', name: 'Demolitionist', icon: '✹', hotkey: '4' },
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
-  const PAGES = { tower: { list: TOWER, title: 'Tower' }, barracks: { list: BARRACKS, title: 'Barracks' }, allies: { list: ALLIES, title: 'Allies' },
+  const PAGES = { defense: { list: DEFENSE, title: 'Defense' }, barracks: { list: BARRACKS, title: 'Barracks' }, allies: { list: ALLIES, title: 'Allies' },
     infantry: { list: INFANTRY, title: 'Infantry' }, ranged: { list: RANGED, title: 'Ranged' }, mobile: { list: MOBILE, title: 'Mobile' } };
   // Opened by left-clicking one of the hero's own buildings.
   const DEMOLISH = [

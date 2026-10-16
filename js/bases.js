@@ -6,7 +6,18 @@
   const SLOT_R = 32 * SCALE;       // clickable/visual radius of a slot
   const SLOT_COUNT = 6;
   const BUILDING_HP = 1500;
-  const DIGIN_WEAPON = { range: 600, minRange: 0, cooldown: 0.4, damage: 35, targets: 'all', pick: 'nearest', shot: 'arrow', muzzle: 40, speed: 900 };
+  // Defense weapons, shared by the towers and the Fortress (which carries several at once).
+  const DIGIN_WEAPON = { range: G.m(12), minRange: 0, cooldown: 0.3, damage: 30, targets: 'all', pick: 'nearest', shot: 'arrow', muzzle: 40, speed: 900 };
+  const SUPPORT_WEAPON = { range: G.m(33), minRange: 0, cooldown: 1.2, damage: 90, targets: 'units', pick: 'nearest', shot: 'bolt', muzzle: 230, speed: 1300 };
+  const SIEGE_WEAPON = { range: G.m(41), minRange: G.m(12), cooldown: 6.0, damage: 250, bldgMul: 2, targets: 'all', pick: 'buildings',
+    roll: { distance: 380, speed: 420, falloff: 0.75, minDamage: 10, radius: 45 }, shot: 'boulder', muzzle: 70, speed: 700 };
+  // Wall: 6 segments on a ring just inside the base edge, one in front of each slot. Each segment is
+  // made of posts (collision circles, see G.buildingSolids); the posts in its middle form a gate that
+  // only its own side walks through. G.steer routes walkers through gates and around walled bases.
+  const WALL_R = BASE_R - 22;
+  const WALL_SPAN = Math.PI / SLOT_COUNT;     // half the angle one segment covers
+  const GATE_HALF = 70 / WALL_R;              // half the gate's angle: a 2.8 m opening
+  const POST_GAP = 24, POST_R = 16;
 
   // Building catalog. Add new building types here.
   G.BUILDINGS = {
@@ -14,34 +25,47 @@
     // Destroyed buildings drop G.BUILDING_SALVAGE of it as coins (see economy.js). The Command Center is free.
     // No gameplay effects yet: these only differ in name and model.
     hut: { name: 'Hut', cost: 50, r: 26 * SCALE },
-    // Towers: `weapon` makes the building shoot (see towers.js).
+    // Defense: `weapon` (or `weapons`, several firing on their own) makes the building shoot (see towers.js).
     //   range/minRange: center-to-target distance. targets: 'units' or 'all' (units + buildings).
-    //   pick: 'nearest' or 'healthiest'. roll: boulder keeps rolling after landing, hurting everything within radius; each hit multiplies its damage by
+    //   pick: 'nearest', 'buildings' (buildings first, else the nearest) or 'maxHp' (highest max health).
+    //   bldgMul: damage multiplier against buildings. splash: shots hurt every hostile this close to where they land.
+    //   roll: boulder keeps rolling after landing, hurting everything within radius; each hit multiplies its damage by
     //   falloff and it stops once damage drops below minDamage, so it can't flatten a whole squad.
+    //   beam: a constant ray that locks onto one target, hitting every `cooldown` for `damage`, multiplied by
+    //   `ramp` after each hit up to `maxDamage`; it starts over on a new target.
     digin: { name: 'Dig-in', cost: 100, r: 26 * SCALE, weapon: DIGIN_WEAPON },
     // Command Center: one per side, at the center of its back-middle base; can't be built or torn down.
     // `hp` overrides BUILDING_HP. Destroying the enemy's wins the game (see G.destroyBuilding).
     command: { name: 'Command Center', cost: 0, r: 48 * SCALE, hp: 5000, command: true,
-      weapon: Object.assign({}, DIGIN_WEAPON, { range: 1000, cooldown: 1.5, damage: 200, muzzle: 230 }) },
-    support: { name: 'Support Tower', cost: 175, r: 22 * SCALE,
-      weapon: { range: 1650, minRange: 0, cooldown: 1.2, damage: 90, targets: 'units', pick: 'nearest', shot: 'bolt', muzzle: 230, speed: 1300 } },
-    siege: { name: 'Siege', cost: 250, r: 26 * SCALE,
-      weapon: { range: 2050, minRange: 600, cooldown: 6.0, damage: 250, bldgMul: 2, targets: 'all', pick: 'buildings', roll: { distance: 380, speed: 420, falloff: 0.75, minDamage: 10, radius: 45 }, shot: 'boulder', muzzle: 70, speed: 700 } },
+      weapon: Object.assign({}, DIGIN_WEAPON, { range: G.m(20), cooldown: 1.5, damage: 200, muzzle: 230 }) },
+    support: { name: 'Support Tower', cost: 150, r: 22 * SCALE, weapon: SUPPORT_WEAPON },
+    siege: { name: 'Siege Machine', cost: 250, r: 26 * SCALE, weapon: SIEGE_WEAPON },
+    // Wall: built from any slot, it rings the whole base without taking the slot. Each of its `segments`
+    // is a building of its own (type wallSegment) that foes target and break separately.
+    wall: { name: 'Wall', cost: 250, wall: true, segments: SLOT_COUNT },
+    wallSegment: { name: 'Wall', cost: 250 / SLOT_COUNT, r: 30, hp: 750, segment: true, menu: false },
+    energy: { name: 'Energy Weapon', cost: 300, r: 22 * SCALE,
+      weapon: { range: G.m(15), minRange: 0, cooldown: 0.5, damage: 3, ramp: 2, maxDamage: 96, targets: 'units', pick: 'maxHp', beam: true, muzzle: 250 } },
+    rock: { name: 'Rock Launcher', cost: 175, r: 26 * SCALE,
+      weapon: { range: G.m(20), minRange: 0, cooldown: 3.0, damage: 50, splash: G.m(2), targets: 'all', pick: 'nearest', shot: 'boulder', muzzle: 90, speed: 650 } },
+    // Fortress: two dig-ins, a support tower and a siege machine in one spot.
+    fortress: { name: 'Fortress', cost: 700, r: 28 * SCALE, hp: 2500,
+      weapons: [DIGIN_WEAPON, Object.assign({}, DIGIN_WEAPON, { muzzle: 120 }), Object.assign({}, SUPPORT_WEAPON, { muzzle: 260 }), SIEGE_WEAPON] },
     // Storm Tower: no weapon. Its field covers the whole base: ranged attacks from outside can't hit
     // anything of its side inside the base (see G.canShoot). Movement and shots out are unaffected.
     storm: { name: 'Storm Tower', cost: 225, r: 22 * SCALE, field: true },
     // Barracks: `squad` names the unit kind it spawns (see SQUAD_KINDS in squads.js). Grouped in the
-    // build menu as Infantry, Ranged and Mobile. `look`: draw it with that building type's model.
+    // build menu as Infantry, Ranged and Mobile.
     barracks: { name: 'Grunt Barracks', cost: 75, r: 26 * SCALE, squad: 'infantry' },
-    barracksSpear: { name: 'Spearmen Barracks', cost: 100, r: 26 * SCALE, squad: 'spearman', look: 'barracks' },
-    barracksElite: { name: 'Elite Barracks', cost: 150, r: 26 * SCALE, squad: 'elite', look: 'barracksArmored' },
+    barracksSpear: { name: 'Spearmen Barracks', cost: 100, r: 26 * SCALE, squad: 'spearman' },
+    barracksElite: { name: 'Elite Barracks', cost: 150, r: 26 * SCALE, squad: 'elite' },
     barracksArmored: { name: 'Armored Barracks', cost: 175, r: 26 * SCALE, squad: 'armored' },
     barracksShort: { name: 'Skirmisher Barracks', cost: 125, r: 26 * SCALE, squad: 'short' },
     barracksLong: { name: 'Marksmen Barracks', cost: 150, r: 26 * SCALE, squad: 'long' },
-    barracksCaster: { name: 'Caster Sanctum', cost: 200, r: 26 * SCALE, squad: 'caster', look: 'barracksLong' },
-    barracksCreature: { name: 'Creature Pens', cost: 125, r: 26 * SCALE, squad: 'creature', look: 'barracksShort' },
-    barracksMounted: { name: 'Stables', cost: 175, r: 26 * SCALE, squad: 'mounted', look: 'barracks' },
-    barracksWarMachine: { name: 'Siege Works', cost: 400, r: 26 * SCALE, squad: 'warMachine', look: 'barracksArmored' },
+    barracksCaster: { name: 'Caster Sanctum', cost: 200, r: 26 * SCALE, squad: 'caster' },
+    barracksCreature: { name: 'Creature Pens', cost: 125, r: 26 * SCALE, squad: 'creature' },
+    barracksMounted: { name: 'Stables', cost: 175, r: 26 * SCALE, squad: 'mounted' },
+    barracksWarMachine: { name: 'Siege Works', cost: 400, r: 26 * SCALE, squad: 'warMachine' },
     // Allies: barracks that train a single, larger specialist (see SQUAD_KINDS in squads.js).
     allyEngineer: { name: 'Engineer Lodge', cost: 150, r: 19 * SCALE, squad: 'engineer' },
     allyMedic: { name: 'Medic Tent', cost: 175, r: 19 * SCALE, squad: 'medic' },
@@ -70,8 +94,21 @@
             const a = -Math.PI / 2 + (i / SLOT_COUNT) * Math.PI * 2;
             slots.push({ x: x + Math.cos(a) * SLOT_RING, y: y + Math.sin(a) * SLOT_RING, building: null });
           }
+          // Wall slots: where each wall segment stands (its middle, on the wall ring), in front of
+          // build slot i, with the posts it is made of. Never built on directly (see G.buildWall).
+          const walls = [];
+          for (let i = 0; i < SLOT_COUNT; i++) {
+            const a = -Math.PI / 2 + (i / SLOT_COUNT) * Math.PI * 2, posts = [];
+            const n = Math.round(2 * WALL_SPAN * WALL_R / POST_GAP);
+            for (let k = 0; k < n; k++) {
+              const d = -WALL_SPAN + (k + 0.5) / n * 2 * WALL_SPAN;
+              posts.push({ x: x + Math.cos(a + d) * WALL_R, y: y + Math.sin(a + d) * WALL_R, cr: POST_R, gate: Math.abs(d) < GATE_HALF });
+            }
+            walls.push({ x: x + Math.cos(a) * WALL_R, y: y + Math.sin(a) * WALL_R, building: null, wall: true, angle: a, posts });
+          }
+          slots.push(...walls);
           // team: owner, or null while neutral. side: which half of the map it sits on.
-          G.bases.push({ id: G.bases.length, x, y, r: BASE_R, side, team: null, slots });
+          G.bases.push({ id: G.bases.length, x, y, r: BASE_R, side, team: null, slots, walls });
         }
       }
     }
@@ -99,7 +136,7 @@
   G.slotAt = function (x, y) {
     for (const base of G.bases)
       for (const slot of base.slots)
-        if (!slot.core && G.dist(x, y, slot.x, slot.y) <= SLOT_R) return { base, slot };
+        if (!slot.core && !slot.wall && G.dist(x, y, slot.x, slot.y) <= SLOT_R) return { base, slot };
     return null;
   };
 
@@ -132,6 +169,7 @@
   // Place a building on a slot picked earlier (re-checked, since the hero may have moved).
   G.placeBuilding = function (hero, hit, type, team = hero.team) {
     const def = G.BUILDINGS[type];
+    if (def.wall) return G.buildWall(hero, hit, team);
     const reason = G.buildCheck(hero, hit.base, hit.slot, team) || (team === hero.team && !G.dev && hero.gold < def.cost ? 'Not enough gold' : null);
     if (reason) { refuse(hit.slot, reason); return false; }
     G.addBuilding(hit.base, hit.slot, type, team);
@@ -146,6 +184,24 @@
       hero.y = hit.slot.y + uy * reach;
     }
     G.burst(hit.slot.x, hit.slot.y, '#ffffff', 20, 140);
+    return true;
+  };
+
+  // The wall goes up around the whole base the slot is in: every missing segment at once, for its share
+  // of the cost (a full wall the first time, only the broken pieces after that). The slot stays free.
+  G.buildWall = function (hero, hit, team = hero.team) {
+    const def = G.BUILDINGS.wall, base = hit.base;
+    const missing = base.walls.filter(w => !w.building);
+    const price = Math.round(def.cost * missing.length / def.segments);
+    let reason = null;
+    if (base.team !== null && base.team !== team) reason = team === hero.team ? 'Enemy base' : 'Not an enemy base';
+    else if (G.dist(hero.x, hero.y, base.x, base.y) > base.r) reason = 'Hero must be in the base';
+    else if (!missing.length) reason = 'Already walled';
+    else if (team === hero.team && !G.dev && hero.gold < price) reason = 'Not enough gold';
+    if (reason) { refuse(hit.slot, reason); return false; }
+    for (const w of missing) { G.addBuilding(base, w, 'wallSegment', team); G.burst(w.x, w.y, '#ffffff', 12, 120); }
+    if (team === hero.team && !G.dev) hero.gold -= price;
+    G.map.resolve(hero);  // off the wall line, if the hero stood on it
     return true;
   };
 
@@ -168,12 +224,16 @@
     return slot.building;
   };
 
-  G.destroyBuilding = function (b) {
+  // fn(building, by) whenever a building comes down; `by` is the hero tearing it down, if one is.
+  G.buildingDeathListeners = [];
+
+  G.destroyBuilding = function (b, by = null) {
     b.hp = 0; b.dead = true;
     b.slot.building = null;
     G.buildingsChanged();
     G.burst(b.x, b.y, '#8a7a66', 40, 260);
     G.dropCoins(b.x, b.y, G.BUILDINGS[b.type].cost * G.BUILDING_SALVAGE);
+    for (const fn of G.buildingDeathListeners) fn(b, by);
     if (G.BUILDINGS[b.type].command) {
       G.burst(b.x, b.y, '#ffb050', 90, 520);
       G.endGame(b.team === G.TEAM.PLAYER ? G.TEAM.ENEMY : G.TEAM.PLAYER);
@@ -184,8 +244,8 @@
 
   // The lists below are asked for many times per step (targeting, collisions, storm checks), so they
   // are cached and only rebuilt after a building goes up or comes down. Treat them as read-only.
-  let listCache = null, solidsCache = null, stormCache = null;
-  G.buildingsChanged = function () { listCache = solidsCache = stormCache = null; };
+  let listCache = null, solidsCache = null, stormCache = null, wallCache = null;
+  G.buildingsChanged = function () { listCache = solidsCache = stormCache = wallCache = null; };
 
   G.buildingList = function () {
     if (listCache) return listCache;
@@ -226,9 +286,109 @@
     if (solidsCache) return solidsCache;
     const out = [];
     for (const b of G.bases)
-      for (const s of b.slots)
-        if (s.building) out.push({ x: s.x, y: s.y, cr: G.BUILDINGS[s.building.type].r });
+      for (const s of b.slots) {
+        if (!s.building) continue;
+        // A wall segment is a row of posts; its gate posts let its own side through (see G.map.resolve).
+        if (s.wall) for (const p of s.posts) out.push({ x: p.x, y: p.y, cr: p.cr, wall: true, gate: p.gate, team: s.building.team });
+        else out.push({ x: s.x, y: s.y, cr: G.BUILDINGS[s.building.type].r });
+      }
     return (solidsCache = out);
+  };
+
+  // ---- Walls: getting through and around them ----
+  // Bases with at least one wall segment standing.
+  function walledBases() {
+    if (wallCache) return wallCache;
+    return (wallCache = G.bases.filter(b => b.walls.some(w => w.building)));
+  }
+  const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+  // The wall slot whose segment covers angle `a` (around the base center).
+  const wallAt = (base, a) => base.walls[((Math.round((a + Math.PI / 2) / (2 * WALL_SPAN)) % SLOT_COUNT) + SLOT_COUNT) % SLOT_COUNT];
+  // Can a walker of `team` cross the wall ring of `base` at angle `a`? Through a broken segment, or
+  // through the gate of a standing segment of its own side.
+  function passable(base, a, team) {
+    const w = wallAt(base, a), b = w.building;
+    return !b || (b.team === team && Math.abs(wrapAngle(a - w.angle)) < GATE_HALF);
+  }
+  // Where the path (ax, ay) -> (bx, by) crosses the wall ring of `base`: [{ k (0..1 along the path), a (angle) }].
+  function crossings(base, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, fx = ax - base.x, fy = ay - base.y;
+    const A = dx * dx + dy * dy, B = 2 * (fx * dx + fy * dy), C = fx * fx + fy * fy - WALL_R * WALL_R;
+    const disc = B * B - 4 * A * C;
+    if (A < 1e-6 || disc <= 0) return [];
+    const sq = Math.sqrt(disc), out = [];
+    for (const k of [(-B - sq) / (2 * A), (-B + sq) / (2 * A)])
+      if (k > 0 && k < 1) out.push({ k, a: Math.atan2(ay + dy * k - base.y, ax + dx * k - base.x) });
+    return out;
+  }
+  // The passage through `base`'s wall that makes the shortest way from `e` to (tx, ty) for `team`, as an
+  // angle, or null if there is none. `a`: where the straight path hits the wall. A broken segment opens
+  // its whole span (less a margin for the walker's body); a gate only its middle.
+  function bestPassage(base, e, tx, ty, a) {
+    let best = null, bc = Infinity;
+    for (const w of base.walls) {
+      const b = w.building;
+      if (b && b.team !== e.team) continue;
+      const half = b ? 0 : Math.max(0, WALL_SPAN - ((e.r || 0) + POST_R + 6) / WALL_R);
+      const at = w.angle + G.clamp(wrapAngle(a - w.angle), -half, half);
+      const px = base.x + Math.cos(at) * WALL_R, py = base.y + Math.sin(at) * WALL_R;
+      const cost = G.dist(e.x, e.y, px, py) + G.dist(px, py, tx, ty);
+      if (cost < bc) { bc = cost; best = at; }
+    }
+    return best;
+  }
+
+  // Bend the way from `e` to (gx, gy) around a circle about the base center: while the path dips
+  // within `rad` of the center, aim instead where it comes closest, pushed out to `out`. Re-steered
+  // every step, this traces a curve around the circle.
+  function bendAround(base, e, gx, gy, rad, out) {
+    for (let i = 0; i < 4; i++) {
+      const l2 = (gx - e.x) ** 2 + (gy - e.y) ** 2;
+      if (l2 < 1) break;
+      const k = G.clamp(((base.x - e.x) * (gx - e.x) + (base.y - e.y) * (gy - e.y)) / l2, 0, 1);
+      let qx = e.x + (gx - e.x) * k - base.x, qy = e.y + (gy - e.y) * k - base.y, q = Math.hypot(qx, qy);
+      if (k <= 0 || q >= rad) break;   // heading away from the circle, or passing clear of it
+      if (q < 1) { qx = -(gy - e.y); qy = gx - e.x; q = Math.hypot(qx, qy) || 1; }  // dead on the center: pick a side
+      gx = base.x + qx / q * out; gy = base.y + qy / q * out;
+    }
+    return { x: gx, y: gy };
+  }
+
+  // Where a walker `e` ({ x, y, r, team }) heading for (tx, ty) should actually head, given the walls
+  // in the way. Returns null for a clear path, { x, y } for a waypoint, or { wall } when an unbroken
+  // wall of another side shuts it out: then it has to break that segment first.
+  // A destination on the wall line itself (a wall segment) can be walked straight up to.
+  G.steer = function (e, tx, ty) {
+    const list = walledBases();
+    if (!list.length) return null;
+    const L = G.dist(e.x, e.y, tx, ty);
+    if (L < 1) return null;
+    let hit = null;
+    for (const base of list) {
+      const onWall = Math.abs(G.dist(tx, ty, base.x, base.y) - WALL_R) < 8;
+      for (const c of crossings(base, e.x, e.y, tx, ty)) {
+        if ((onWall && (1 - c.k) * L < 40) || passable(base, c.a, e.team)) continue;
+        if (!hit || c.k < hit.k) hit = { base, k: c.k, a: c.a };
+      }
+    }
+    if (!hit) return null;
+    const { base } = hit, r = e.r || 0, clear = r + POST_R + 20;
+    const de = G.dist(e.x, e.y, base.x, base.y), inside = de < WALL_R;
+    // Both ends outside: walk around the wall instead of through it.
+    if (!inside && G.dist(tx, ty, base.x, base.y) >= WALL_R) return bendAround(base, e, tx, ty, WALL_R, WALL_R + clear + 30);
+    const at = bestPassage(base, e, tx, ty, hit.a);
+    if (at === null) return { wall: wallAt(base, hit.a).building };
+    // Line up on this side of the passage, then walk straight through to the far side. Anywhere the
+    // body fits between the gate posts counts as lined up, so a crowd can file through side by side.
+    const ea = Math.atan2(e.y - base.y, e.x - base.x), fit = Math.max(10, GATE_HALF * WALL_R - r - POST_R - 2);
+    const lined = Math.abs(de - WALL_R) <= clear + 4 && Math.abs(wrapAngle(ea - at)) * WALL_R < fit;
+    const rr = WALL_R + (inside === lined ? clear : -clear);
+    const aa = at + G.clamp(wrapAngle(ea - at), -fit / WALL_R, fit / WALL_R);   // the nearest lane through
+    const wx = base.x + Math.cos(aa) * rr, wy = base.y + Math.sin(aa) * rr;
+    // Inside the Command Center's base, go round the Command Center on the way.
+    const cc = base.core && base.core.building;
+    if (!inside || lined || !cc) return { x: wx, y: wy };
+    return bendAround(base, e, wx, wy, cc.r + r + 4, cc.r + r + 30);
   };
 
 })(window.Game);

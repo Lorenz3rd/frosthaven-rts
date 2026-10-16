@@ -48,35 +48,30 @@
 
   const SHAPES = {
     // Bannerspear
-    'Phalanx Thrust': line(70),
-    'Shield Rush': dash(),
-    'Rally Banner': area(230),
-    "Vanguard's Stand": dash(220),
+    'Banner of Doom': area(150),
+    'Banner of Courage': area(300),
+    'Unbreakable Wall': cone(200, 1.8),
+    'Banner of Hope': area(500),
     // Boneshaper
-    'Bone Spear': line(32),
-    'Raise Dead': area(90),
-    'Bone Armor': self(120),
-    'Bone Colossus': area(180),
+    'Doug & Doug': area(70),
+    "Death's Curse": line(200),
+    'Back Again': self(500),
+    'Bone Ball': area(60),
     // Deathwalker
-    'Shadow Scythe': line(68),
-    'Shadow Step': dash(),
-    'Soul Siphon': foe(160, null, { buildings: false }),
-    'Reaping Night': area(260),
+    'Shadow Step': dash(G.m(2.5)),
+    'Darkness Grows': h => G.fx.filter(o => o.kind === 'shadowPool' && o.owner === h && !o.dead).map(o => ({ t: 'circle', x: o.x, y: o.y, r: o.r })),
+    'In the Dark': self(h => h.r + 40),
+    'Night Falls': foe(160),
     // Geminate: Twin Strike depends on the form.
     'Twin Strike': (h, ab, tx, ty) => h.form === 'melee' ? self(140)(h) : area(300)(h, ab, tx, ty),
     'Phase Shift': dash(),
     'Resonance': self(220),
     'Convergence': self(550),
     // Blinkblade
-    'Blink Strike': foe(180, dash()),
-    'Overclock': self(h => h.r + 40),
-    'Rewind': h => {
-      const hist = h.history || [];
-      if (hist.length < 2) return self(h.r + 20)(h);
-      const past = hist[Math.max(0, hist.length - 30)];
-      return arrowTo(h, past, h.r * 2).concat([{ t: 'circle', x: past.x, y: past.y, r: h.r + 10 }]);
-    },
-    'Thousand Cuts': area(350),
+    'Poison Dagger': cone(G.m(5), 1.4),
+    'Stab Them All': self(G.m(8)),
+    'Go Fast': self(h => h.r + 40),
+    'Now You See Me': self(h => h.r + 40),
     // Crushing Tide
     'Riptide Claw': cone(180, 1.9),
     'Coral Carapace': self(150),

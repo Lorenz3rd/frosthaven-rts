@@ -84,7 +84,7 @@
     for (const p of G.players) p.pad.down.forEach((v, i) => { d[i] = d[i] || v; });
     return d;
   }
-  const padHelp = ab => `Left stick move · Ⓐ attack nearest · Ⓧ ${ab[0]} · Ⓨ ${ab[1]} · Ⓑ ${ab[2]} · RB ${ab[3]} (aim with the left stick: tilt further to cast further) · L3 (click left stick) call soldiers · LB build menu at a slot (stick + Ⓐ to pick, LB to close) · LT/RT zoom · ☰ pause`;
+  const padHelp = ab => `Left stick move · Ⓐ attack nearest · Ⓧ ${ab[0]} · Ⓨ ${ab[1]} · Ⓑ ${ab[2]} · RB ${ab[3]} (aim with the left stick: tilt further to cast further) · L3 (click left stick) call the nearest group to follow · D-pad orders for your groups: ▼ cancel, ◀ guard, ▶ alert, ▲ charge · LB build menu at a slot (stick + Ⓐ to pick, LB to close) · LT/RT zoom · ☰ pause`;
 
   function render() {
     el.querySelector('.result').textContent = netGame() ? 'Menu · the battle goes on' : 'Paused';
@@ -117,7 +117,7 @@
     const ab = G.hero ? G.hero.def.abilities.map(a => a.name) : ['Q', 'W', 'E', 'R'];
     el.querySelector('.help').innerHTML = G.controlScheme === 'pad'
       ? padHelp(ab)
-      : `Right-click move · Left-click attack / build · Q ${ab[0]} · W ${ab[1]} · E ${ab[2]} · R ${ab[3]} (aim with the cursor) · F follow · P or Esc pause`;
+      : `Right-click move · Left-click attack / build · Q ${ab[0]} · W ${ab[1]} · E ${ab[2]} · R ${ab[3]} (aim with the cursor) · F call the nearest group to follow · orders for your groups: 1 cancel, 2 guard, 3 alert, 4 charge · P or Esc pause`;
     if (G.confirmCast) el.querySelector('.help').innerHTML += ' · Ability confirm: press an ability to preview it, press it again to cast, anything else cancels';
   }
 

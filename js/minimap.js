@@ -73,7 +73,7 @@
         ctx.lineWidth = b.team === null ? 1.5 : 2.5;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         for (const s of b.slots) {
-          if (!s.building) continue;
+          if (!s.building || s.wall) continue;
           const q = toMap(s.x, s.y), k = s.core ? 3.5 : 1.5;  // Command Center: a bigger, gold mark
           ctx.fillStyle = s.core ? '#ffd27a' : '#e9dcc2';
           ctx.fillRect(q.x - k, q.y - k, k * 2, k * 2);
@@ -91,7 +91,7 @@
         ctx.fillStyle = color; ctx.fill();
       }
       for (const e of G.entities) {
-        if (e.dead || !(e instanceof G.Hero) || G.players.some(p => p.hero === e)) continue;
+        if (e.dead || !(e instanceof G.Hero) || G.players.some(p => p.hero === e) || G.unseen(e)) continue;
         // An enemy hero: a bigger red mark.
         const p = toMap(e.x, e.y);
         ctx.fillStyle = '#ff7a5c'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
@@ -99,6 +99,7 @@
       }
       // Each player's hero: pale blue for the west, red-orange for the east.
       for (const { hero } of G.players) {
+        if (G.unseen(hero)) continue;
         const hp = toMap(hero.x, hero.y);
         ctx.fillStyle = hero.team === G.TEAM.PLAYER ? '#bfe3ff' : '#ff7a5c'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(hp.x, hp.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();

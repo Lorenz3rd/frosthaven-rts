@@ -25,6 +25,7 @@
 
     G.createBases();
     G.createCommandCenters();
+    G.resetUnlocks();
     // Spawn by the center of the middle-front base on the player's side.
     const front = G.bases.find(b => b.side === G.TEAM.PLAYER && b.x === G.BASE_COLS[1] && b.y === G.map.h / 2);
     const HERO_SPAWN = { x: front.x + 110, y: front.y + 40 };  // just beside the brazier
@@ -67,6 +68,8 @@
       respawns.push({ h: hero, at: HERO_SPAWN, t: 0 });
     }
     G.hero = hero;
+    // Neutral creatures roam no-man's-land (a network client gets them from the host).
+    if (!netClient) G.spawnCreatures();
     function netSpawn(team, i) {
       const ys = [G.map.h / 2, G.map.h / 2 - 1280, G.map.h / 2 + 1280];
       const x = team === G.TEAM.PLAYER ? G.BASE_COLS[1] : G.map.w - G.BASE_COLS[1];
@@ -188,6 +191,7 @@
       if (single) G.ai.update(dt);
 
       for (const e of G.entities) e.update(dt);
+      G.updateCreatures();
       G.updateSquads(dt);
       for (const r of respawns) {
         if (r.h.away) continue;   // network player who dropped out: off the field until they're back
@@ -198,6 +202,7 @@
       G.updateProjectiles(dt);
       G.updateFx(dt);
       G.updateEffects(dt);
+      G.updateUnlocks();
       for (const p of players) {
         p.cam.update(dt, p.hero);
         if (p.moveMarker && (p.moveMarker.t += dt) > 0.5) p.moveMarker = null;
@@ -208,6 +213,7 @@
     // Mouse and keyboard (one-player games): right-click moves, left-click attacks / builds, QWER cast at the cursor.
     function mouseKeyboard(p) {
       const input = G.input, hero = p.hero, cam = p.cam, menu = p.menu;
+      const menuUp = menu.isOpen || menu.isDemolish;  // its number hotkeys aren't orders
       // Ability confirm: any click or other key cancels the previewed ability (and still does its own thing).
       const pc = p.pendingCast;
       if (pc && (input.rightClicks.length || input.leftClicks.length || Object.keys(input.pressed).some(k => k !== pc.ab.key))) p.pendingCast = null;
@@ -239,12 +245,15 @@
         if (input.pressed[ab.key]) castOrPreview(p, ab, 'mkb');
       }
       if (input.pressed.f && !hero.dead) p.act.follow();
+      // 1-4: orders for every commanded soldier (see G.commandOrder).
+      G.COMMAND_ORDERS.forEach((o, i) => { if (input.pressed[i + 1] && !menuUp && !hero.dead) p.act.order(o); });
     }
 
     // An ability button press. Normally it casts. With "ability confirm before cast" on, the first press
     // only shows the preview (p.pendingCast, drawn by render3d) and pressing the same ability again casts.
     // A failed cast (e.g. nothing in reach) keeps the preview up.
     function castOrPreview(p, ab, via) {
+      if (!G.isUnlocked(p.hero, ab.key)) { p.pendingCast = null; G.lockedNotice(p.hero, ab.key); return; }
       const pc = p.pendingCast;
       if (!G.confirmCast || (pc && pc.ab === ab)) {
         const t = aimFor(p, ab, via);
@@ -318,6 +327,8 @@
       CAST_BTNS.forEach((btn, i) => { if (d[btn]) castOrPreview(p, hero.def.abilities[i], 'pad'); });
       // Left stick click: call soldiers (F).
       if (d[B.L3]) p.act.follow();
+      // D-pad: orders for every commanded soldier. Down cancel, left guard, right alert, up charge.
+      [B.DOWN, B.LEFT, B.RIGHT, B.UP].forEach((btn, i) => { if (d[btn]) p.act.order(G.COMMAND_ORDERS[i]); });
     }
     // Controller attack target within 12 m, aimed by the left stick (the hero's facing when the stick is
     // centered). An enemy hero anywhere in that half of the circle wins outright; otherwise the nearest foe
@@ -341,7 +352,7 @@
       if (!base) return null;
       let best = null, bd = G.SLOT_R + hero.r + 60;
       for (const slot of base.slots) {
-        if (slot.core) continue;
+        if (slot.core || slot.wall) continue;
         const dd = G.dist(hero.x, hero.y, slot.x, slot.y);
         if (dd < bd) { bd = dd; best = { base, slot }; }
       }

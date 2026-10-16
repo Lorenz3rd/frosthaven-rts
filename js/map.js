@@ -50,9 +50,10 @@
     }
   };
 
-  map.blocked = function (x, y, r) {
+  // team: whose walker asks, so the gates of its own walls let it through (see bases.js).
+  map.blocked = function (x, y, r, team) {
     if (x < r || y < r || x > map.w - r || y > map.h - r) return true;
-    return map.hitsRock(x, y, r);
+    return map.hitsRock(x, y, r, team);
   };
 
   // Everything solid: rocks, trees, plus placed buildings. Each has {x, y, cr}.
@@ -107,11 +108,14 @@
     return near;
   }
 
-  map.hitsRock = (x, y, r) => solidsNear(x, y, r).some(k => G.dist(x, y, k.x, k.y) < r + k.cr);
+  // Wall posts: a gate post stops everyone but its own side. overWalls: shots fly over walls entirely.
+  const passes = (k, team, overWalls) => k.wall && (overWalls || (k.gate && k.team === team));
+  map.hitsRock = (x, y, r, team, overWalls) => solidsNear(x, y, r).some(k => !passes(k, team, overWalls) && G.dist(x, y, k.x, k.y) < r + k.cr);
 
   // Push a circle entity out of rocks/buildings and keep it on the map.
   map.resolve = function (e) {
     for (const k of solidsNear(e.x, e.y, e.r)) {
+      if (passes(k, e.team)) continue;
       let dx = e.x - k.x, dy = e.y - k.y;
       let d = Math.hypot(dx, dy);
       const min = e.r + k.cr;

@@ -239,6 +239,152 @@
     shellBanner(gr, team, -70, 0, 120);
     return K.placeInSlot(gr, slot, base);
   };
+  // A trident planted in the ground: driftwood shaft, steel crossbar and three prongs.
+  function trident(parent, x, z, h, glow = false) {
+    const steelM = K.metal(0x9aa0a8);
+    add(parent, g.cyl(h * 0.014, h * 0.018, h, 6), K.m(0x6b4a2a), x, h / 2, z);
+    add(parent, g.box(h * 0.02, h * 0.02, h * 0.16), steelM, x, h, z);
+    for (const dz of [-1, 0, 1]) add(parent, g.cone(h * 0.02, h * (dz ? 0.13 : 0.17), 4), glow && !dz ? glowM() : steelM, x, h * (dz ? 1.065 : 1.085), z + dz * h * 0.07);
+  }
+  B.barracksSpear = (slot, base, team) => {   // Trident Garden: a ring of planted tridents around a great glowing trident, kelp swaying
+    const gr = new THREE.Group();
+    add(gr, g.cyl(84, 90, 10, 14), K.m(C.rock), 0, 5, 0);
+    add(gr, g.cyl(30, 34, 14, 10), K.m(C.shellDark), -10, 12, 0);
+    trident(gr, -10, 0, 200, true);
+    K.addGlow(gr, C.glow, 70, -10, 214, 0, 0.7);
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * PI * 2 + PI / 8;
+      trident(gr, -10 + Math.cos(a) * 66, Math.sin(a) * 66, 110);
+    }
+    const weeds = [[40, -30], [40, 30], [-50, -20], [-50, 30], [10, -62], [10, 62]].map(([x, z]) => kelp(gr, x, z, 50));
+    for (const z of [-50, 50]) add(gr, g.box(10, 22, 36), K.m(C.shellDark), 70, 11, z);
+    coral(gr, 70, -50, 40, C.coral, 1); coral(gr, 70, 50, 40, C.coralB, 4);
+    shellBanner(gr, team, -60, -70, 110);
+    gr.userData = { tick(b, time) { weeds.forEach((k, i) => k.userData.segs.forEach((s, j) => { s.rotation.z = Math.sin(time * 1.4 + i + j * 0.6) * 0.2; })); } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksElite = (slot, base, team) => {   // Razor Arena: giant clam shells fan around a sand pit, a razorclaw trophy behind
+    const gr = new THREE.Group();
+    add(gr, g.cyl(84, 90, 8, 14), K.m(C.rock), 0, 4, 0);
+    add(gr, g.cyl(46, 48, 3, 16), K.m(C.sand), 10, 9, 0);
+    for (let i = 0; i < 9; i++) {
+      if (i === 4) continue;   // the trophy stands in this gap at the back
+      const a = PI * 0.25 + i / 8 * PI * 1.5;   // open toward the front
+      const p = pivot(gr, 10 + Math.cos(a) * 62, 8, Math.sin(a) * 62); p.rotation.y = -a;
+      for (let k = 0; k < 7; k++) {   // a scallop fan standing on its hinge
+        const t = (k - 3) * 0.34;
+        add(p, g.cone(7, 40, 4), K.m(i % 2 ? C.shellHi : 0xe8d0c0), 0, 4 + 20 * Math.cos(t), 20 * Math.sin(t), { rx: t, sx: 0.35 });
+      }
+      add(p, g.sph(5, 8, 6), pearlM(), -6, 8, 0);
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = PI * 0.25 + (i + 0.5) / 8 * PI * 1.5;
+      add(gr, g.cone(4, 36, 5), K.m(coralCols[i % 3]), 10 + Math.cos(a) * 70, 26, Math.sin(a) * 70);
+    }
+    // The trophy: a huge razorclaw on a rock at the back of the pit.
+    add(gr, g.dodec(22), K.m(C.rock), -56, 16, 0);
+    const claw = pivot(gr, -56, 34, 0); claw.rotation.z = 0.5;
+    add(claw, g.sph(16, 10, 8), K.m(C.coral), 0, 14, 0, { sy: 1.5 });
+    add(claw, g.cone(9, 46, 6), K.m(C.coral), 4, 50, 4);
+    add(claw, g.cone(7, 36, 6), K.m(C.coral), -4, 44, -6, { rx: -0.3 });
+    for (let i = 0; i < 4; i++) add(claw, g.cone(2, 8, 4), K.m(0xe8e0d0), 10, 30 + i * 8, 4, { rz: -PI / 2 });
+    K.addGlow(gr, C.glow, 90, 10, 18, 0, 0.4);
+    shellBanner(gr, team, -60, -60, 110);
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksCaster = (slot, base, team) => {   // Tide Temple: a towering conch shrine over a brine pool, a glowing pearl afloat
+    const gr = new THREE.Group();
+    add(gr, g.cyl(84, 90, 8, 14), K.m(C.rock), 0, 4, 0);
+    conch(gr, -36, 8, 0, 34, C.coralC);
+    add(gr, g.sph(16, 10, 8), K.m(0x0a1418), 12, 24, 0, { sx: 0.4, sy: 0.9 });
+    const w = pool(gr, 48, 0, 26);
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * PI * 2;
+      add(gr, g.cyl(3, 4, 30, 6), K.m(C.sand), 48 + Math.cos(a) * 40, 15, Math.sin(a) * 40);
+      add(gr, g.sph(4, 8, 6), glowM(), 48 + Math.cos(a) * 40, 33, Math.sin(a) * 40, { shadow: false });
+    }
+    const orb = pivot(gr, 48, 56, 0);
+    add(orb, g.sph(10, 12, 10), pearlM(), 0, 0, 0);
+    K.addGlow(orb, C.glow, 110, 0, 0, 0, 0.75);
+    const ring = pivot(gr, 48, 56, 0);
+    add(ring, g.torus(20, 1.2, 4, 24), glowM(), 0, 0, 0, { rx: PI / 2, shadow: false });
+    const weeds = [[-70, -40], [-70, 40], [0, -70], [0, 70]].map(([x, z]) => kelp(gr, x, z, 60));
+    shellBanner(gr, team, -60, -66, 120);
+    gr.userData = {
+      tick(b, time) {
+        orb.position.y = 56 + Math.sin(time * 1.4) * 6;
+        ring.rotation.x = Math.sin(time * 0.9) * 0.5; ring.rotation.z = time * 0.8;
+        w.material.opacity = 0.65 + Math.sin(time * 2) * 0.08;
+        weeds.forEach((k, i) => k.userData.segs.forEach((s, j) => { s.rotation.z = Math.sin(time * 1.2 + i + j * 0.6) * 0.2; }));
+      }
+    };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksCreature = (slot, base, team) => {   // Snapjaw Pens: three tide pools, each holding a snapping crab beast
+    const gr = new THREE.Group();
+    add(gr, g.box(170, 6, 180), K.m(C.sand), 0, 3, 0);
+    const claws = [];
+    for (const [x, z, r] of [[-36, -44, 32], [-36, 44, 32], [38, 0, 34]]) {
+      pool(gr, x, z, r);
+      const crab = pivot(gr, x, 8, z);
+      add(crab, g.dome(16, 12, 6), K.m(C.shell), 0, 0, 0, { sx: 1.3, sy: 0.7 });
+      for (const dz of [-4, 4]) add(crab, g.sph(2, 6, 5), glowM(), 16, 8, dz, { shadow: false });
+      for (const s of [-1, 1]) {
+        const c = pivot(crab, 14, 4, s * 14);
+        add(c, g.sph(6, 8, 6), K.m(C.shellHi), 4, 0, 0, { sx: 1.6 });
+        const jaw = pivot(c, 12, 0, 0);
+        add(jaw, g.cone(3, 12, 5), K.m(C.shellHi), 6, 2, 0, { rz: -PI / 2 });
+        claws.push(jaw);
+      }
+    }
+    // Low rock walls and nets between the pens, urchins along the front.
+    add(gr, g.box(60, 18, 10), K.m(C.rock), -36, 9, 0);
+    for (const z of [-60, 60]) add(gr, g.box(10, 18, 50), K.m(C.rock), 30, 9, z);
+    add(gr, g.torus(18, 1, 4, 12, PI), K.m(0x8a7a5a), -70, 26, 0, { ry: PI / 2 });
+    for (const z of [-30, 30]) urchin(gr, 76, 10, z, 7);
+    shellBanner(gr, team, -76, -80, 100);
+    gr.userData = { tick(b, time) { claws.forEach((j, i) => { j.rotation.y = Math.max(0, Math.sin(time * 3 + i * 1.3)) * -0.6 * (i % 2 ? -1 : 1); }); } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksMounted = (slot, base, team) => {   // Strider Roost: a shell-vaulted stable on coral stilts over a tide pool
+    const gr = new THREE.Group();
+    const w = pool(gr, 0, 0, 70);
+    for (const [x, z] of [[-50, -64], [-50, 64], [10, -64], [10, 64], [-50, 0], [10, 0]]) add(gr, g.cyl(5, 7, 60, 6), K.m(C.coralB), x, 30, z);
+    add(gr, g.box(84, 6, 150), K.m(C.shellDark), -20, 62, 0);
+    const vault = new THREE.CylinderGeometry(40, 40, 140, 12, 1, false, -PI / 2, PI).rotateX(-PI / 2);
+    add(gr, vault, K.m(C.shell), -20, 65, 0);
+    for (let i = 0; i < 7; i++) add(gr, g.cone(5, 26, 5), K.m(C.shellHi), -20, 112, -60 + i * 20);
+    add(gr, g.box(4, 34, 30), K.m(0x0a1418), 17, 82, 0);
+    // A ramp down to the pool, and long lobster antennae arching over it from the gateposts.
+    add(gr, g.box(70, 4, 30), K.m(C.shellDark), 46, 34, 0, { rz: -0.8 });
+    for (const s of [-1, 1]) {
+      add(gr, g.cyl(4, 5, 46, 6), K.m(C.coral), 74, 23, s * 22);
+      add(gr, g.cyl(1.2, 2, 90, 5), K.m(0xc84a2a), 64, 86, s * 40, { rx: s * 0.45, rz: 0.25 });
+    }
+    // Tail fan over the door.
+    for (let i = 0; i < 5; i++) add(gr, g.cone(6, 26, 4), K.m(0xc84a2a), 22, 112, (i - 2) * 9, { rx: (i - 2) * 0.35, sz: 0.4 });
+    K.addGlow(gr, C.glow, 70, 24, 90, 0, 0.5);
+    shellBanner(gr, team, -70, -80, 130);
+    gr.userData = { tick(b, time) { w.material.opacity = 0.65 + Math.sin(time * 2) * 0.08; } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksWarMachine = (slot, base, team) => {   // Leviathan Cradle: a colossal spiral shell grown in a whalebone cradle, a brine mortar out front
+    const gr = new THREE.Group();
+    add(gr, g.cyl(86, 92, 10, 14), K.m(C.rock), 0, 5, 0);
+    const shellP = conch(gr, 30, 60, 0, 36, C.sand);
+    shellP.rotation.z = PI / 2;
+    for (let i = 0; i < 4; i++) add(gr, new THREE.TorusGeometry(56, 4, 5, 12, PI), K.m(0xe8e0d0), -60 + i * 30, 60, 0, { ry: PI / 2, rz: PI });
+    coral(gr, -20, -50, 40, C.coral, 2); coral(gr, 10, 54, 34, C.coralC, 6); coral(gr, -60, 40, 30, C.coralB, 9);
+    // The brine mortar: a squat barrel on a rock, glowing at the mouth.
+    add(gr, g.dodec(20), K.m(C.rock), 62, 14, -54);
+    add(gr, g.cyl(12, 16, 30, 10), K.m(C.shellDark), 62, 44, -54, { rz: -0.4 });
+    add(gr, g.cyl(10, 10, 1, 10), glowM(), 68, 58, -54, { rz: -0.4, shadow: false });
+    const mouth = K.addGlow(gr, C.glow, 60, 68, 60, -54, 0.8);
+    for (const z of [-30, 30]) urchin(gr, 70, 12, z, 8);
+    shellBanner(gr, team, -76, -60, 130);
+    gr.userData = { tick(b, time) { mouth.material.opacity = 0.6 + Math.sin(time * 3) * 0.25; } };
+    return K.placeInSlot(gr, slot, base);
+  };
 
   // Allies
   B.allyEngineer = (slot, base, team) => {   // Coral Nursery: rows of young coral under glowing polyps

@@ -377,7 +377,7 @@
         const sm = new THREE.Mesh(new THREE.RingGeometry(G.SLOT_R - 8, G.SLOT_R, 48).rotateX(-Math.PI / 2),
           new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }));
         sm.position.set(slot.x, 2, slot.y);
-        sm.visible = !slot.core;
+        sm.visible = !slot.core && !slot.wall;
         scene.add(sm);
         return { slot, mesh: sm };
       });
@@ -593,6 +593,231 @@
     return placeInSlot(g, slot, base);
   }
 
+  // ---- The newer troop barracks: each its own building, not a dressed longhouse. ----
+
+  // A snow-capped gabled roof running along z over walls `w` wide that top out at y0. Returns the apex.
+  function gableRoof(g, x, z, w, len, y0, roofHex = 0x3b3226) {
+    const K = G.kit, r = w * 0.66, s = r * 0.58;
+    K.add(g, K.g.cyl(r, r, len, 3), K.m(roofHex), x, y0 + r / 2, z, { rx: -Math.PI / 2 });
+    K.add(g, K.g.cyl(s, s, len - 8, 3), K.m(0x7f8790), x, y0 + 1.5 * r - s + 2, z, { rx: -Math.PI / 2 });
+    return y0 + 1.5 * r;
+  }
+
+  // Spearmen: a narrow drill hall behind a yard of towering pike racks and a straw drill dummy.
+  function makePikeYard(slot, base, team) {
+    const g = new THREE.Group(), K = G.kit;
+    const wood = K.m(0x3a2a1d), dark = K.m(0x16100b), plank = K.m(0x5a4330), straw = K.m(0xc9b070), steel = K.metal(0x8a8f96);
+    K.add(g, K.g.box(130, 14, 180), K.m(0x2f2f31), 0, 7, 0);
+    K.add(g, K.g.box(66, 56, 166), wood, -30, 42, 0);
+    const apex = gableRoof(g, -30, 0, 66, 176, 70);
+    K.add(g, K.g.box(4, 42, 30), dark, 4, 35, 0);
+    K.add(g, K.g.cyl(9, 9, 3, 10), K.m(TEAM_HEX[team]), 5, 62, 0, { rz: Math.PI / 2 });
+    for (const z of [-50, 50]) {
+      for (const dz of [-28, 28]) K.add(g, K.g.box(6, 62, 6), wood, 40, 45, z + dz);
+      for (const y of [40, 72]) K.add(g, K.g.box(5, 4, 62), plank, 40, y, z);
+      for (let i = 0; i < 7; i++) {
+        const pz = z - 24 + i * 8;
+        K.add(g, K.g.cyl(1.3, 1.3, 130, 4), plank, 44, 79, pz, { rz: 0.08 });
+        K.add(g, K.g.cone(3, 12, 4), steel, 38.6, 150, pz, { rz: 0.08 });
+      }
+    }
+    // Drill dummy with a practice pike through its arms.
+    K.add(g, K.g.cyl(2, 2, 46, 4), dark, 60, 37, 0);
+    K.add(g, K.g.cyl(8, 9, 22, 6), straw, 60, 42, 0);
+    K.add(g, K.g.sph(7, 6, 5), straw, 60, 60, 0);
+    K.add(g, K.g.box(4, 4, 30), straw, 60, 48, 0);
+    K.add(g, K.g.cyl(1.2, 1.2, 70, 4), plank, 66, 46, 0, { rz: 1.35 });
+    const glow = glowSprite(0xff8a30, 50, 0.5); glow.position.set(10, 42, 24);
+    g.add(glow, ...teamFlag(team, -30, apex + 22, 0));
+    return placeInSlot(g, slot, base);
+  }
+
+  // Elites: a battlemented stone hall overlooking a roped dueling ring, champion statues at its door.
+  function makeChampionYard(slot, base, team) {
+    const g = new THREE.Group(), K = G.kit, PI = Math.PI;
+    const stoneM = K.m(0x2f2f31), stoneHi = K.m(0x45454a), dark = K.m(0x16100b), wood = K.m(0x3a2a1d);
+    const gold = K.metal(0xd9a530), steel = K.metal(0x8a8f96), teamM = K.m(TEAM_HEX[team], { side: THREE.DoubleSide });
+    K.add(g, K.g.box(70, 14, 180), stoneM, -30, 7, 0);
+    K.add(g, K.g.box(60, 90, 160), stoneHi, -30, 59, 0);
+    K.add(g, K.g.box(64, 5, 164), gold, -30, 100, 0);
+    K.add(g, K.g.box(56, 4, 156), K.m(0x7f8790), -30, 104, 0);
+    for (let i = 0; i < 6; i++) for (const x of [-56, -4]) K.add(g, K.g.box(10, 14, 12), stoneHi, x, 110, -70 + i * 28);
+    K.add(g, K.g.box(4, 50, 34), dark, 1, 39, 0);
+    for (const z of [-46, 46]) K.add(g, K.g.plane(22, 56), teamM, 1.5, 68, z, { ry: PI / 2 });
+    K.add(g, K.g.torus(10, 2.5, 4, 14), gold, 2, 80, 0, { ry: PI / 2 });
+    for (const s of [-1, 1]) K.add(g, K.g.box(2, 40, 4), steel, 3, 80, 0, { rx: s * 0.6 });
+    // The dueling ring: a sand floor fenced with posts and rope.
+    K.add(g, K.g.cyl(40, 42, 3, 16), K.m(0xb8a27a), 40, 1.5, 0);
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * PI * 2;
+      K.add(g, K.g.cyl(2, 2.4, 22, 5), wood, 40 + Math.cos(a) * 42, 11, Math.sin(a) * 42);
+    }
+    K.add(g, K.g.torus(42, 1, 4, 24), K.m(0x8a7a62), 40, 18, 0, { rx: PI / 2 });
+    // Champion statues on plinths either side of the door.
+    for (const z of [-72, 72]) {
+      K.add(g, K.g.box(16, 16, 16), stoneHi, 8, 8, z);
+      K.add(g, K.g.cyl(6, 8, 24, 6), steel, 8, 28, z);
+      K.add(g, K.g.sph(6, 6, 5), steel, 8, 45, z);
+      K.add(g, K.g.box(2, 30, 3), steel, 14, 40, z, { rz: -0.3 });
+    }
+    for (const z of [-24, 24]) { const t = glowSprite(0xff8a30, 44, 0.6); t.position.set(6, 56, z); g.add(t); }
+    g.add(...teamFlag(team, -30, 140, 0));
+    return placeInSlot(g, slot, base);
+  }
+
+  // Casters: a round mage tower with lit windows, a gallery and a slate spire, a burning orb floating
+  // above it with embers circling the roof, a domed chapel and a glowing rune circle at its foot.
+  function makeMageTower(slot, base, team) {
+    const g = new THREE.Group(), K = G.kit, PI = Math.PI;
+    const stoneM = K.m(0x2f2f31), stoneHi = K.m(0x45454a), slate = K.m(0x2a2438), dark = K.m(0x16100b), gold = K.metal(0xd9a530);
+    const fire = K.lit(0xffa040);
+    K.add(g, K.g.cyl(76, 82, 12, 10), stoneM, 0, 6, 0);
+    K.add(g, K.g.cyl(32, 40, 200, 10), stoneHi, -20, 112, 0);
+    for (const [y, r] of [[80, 37.5], [160, 34.5]]) K.add(g, K.g.torus(r, 2.5, 4, 20), gold, -20, y, 0, { rx: PI / 2 });
+    K.add(g, K.g.cyl(46, 40, 10, 10), stoneHi, -20, 217, 0);
+    K.add(g, K.g.cone(50, 100, 10), slate, -20, 272, 0);
+    K.add(g, K.g.cone(28, 50, 10), K.m(0x7f8790), -20, 299, 0);
+    K.add(g, K.g.cyl(1.5, 1.5, 30, 4), gold, -20, 335, 0);
+    for (let i = 0; i < 5; i++) {
+      const a = 0.3 - i * 1.3, y = 50 + i * 32, r = 39.5 - i * 1.5;
+      K.add(g, K.g.box(4, 14, 7), fire, -20 + Math.cos(a) * r, y, Math.sin(a) * r, { ry: -a, shadow: false });
+    }
+    K.add(g, K.g.box(4, 40, 22), dark, 19, 32, 0);
+    K.add(g, K.g.cyl(24, 26, 56, 8), stoneHi, 35, 40, 40);
+    K.add(g, K.g.dome(26, 10, 5), slate, 35, 68, 40);
+    K.add(g, K.g.box(4, 30, 14), dark, 60, 27, 40);
+    K.add(g, K.g.ring(22, 26, 32), K.lit(0xff9a40, { transparent: true, opacity: 0.7, side: THREE.DoubleSide }), 50, 12.5, -36, { shadow: false });
+    const rune = glowSprite(0xff8a30, 70, 0.5); rune.position.set(50, 20, -36);
+    const orb = K.pivot(g, -20, 362, 0);
+    K.add(orb, K.g.ico(11, 0), fire, 0, 0, 0, { shadow: false });
+    K.addGlow(orb, 0xff8a30, 100, 0, 0, 0, 0.8);
+    const embers = [0, 1, 2].map(() => glowSprite(0xffb050, 22, 0.9));
+    g.add(rune, ...embers, ...teamFlag(team, 35, 104, 40));
+    g.userData.tick = (b, time) => {
+      orb.position.y = 362 + Math.sin(time * 1.5) * 6; orb.rotation.y = time;
+      embers.forEach((s, i) => { const a = time * 1.2 + i * PI * 2 / 3; s.position.set(-20 + Math.cos(a) * 60, 236 + Math.sin(time * 2 + i) * 10, Math.sin(a) * 60); });
+    };
+    return placeInSlot(g, slot, base);
+  }
+
+  // Creatures: a low kennel house with a row of arched hound doors (one hound peering out), and a
+  // fenced run with doghouses, a trough and gnawed bones.
+  function makeKennels(slot, base, team) {
+    const g = new THREE.Group(), K = G.kit, PI = Math.PI;
+    const wood = K.m(0x3a2a1d), dark = K.m(0x16100b), plank = K.m(0x5a4330), bone = K.m(0xe0d8c0);
+    K.add(g, K.g.box(70, 10, 180), K.m(0x2f2f31), -30, 5, 0);
+    K.add(g, K.g.box(60, 40, 166), wood, -30, 30, 0);
+    const apex = gableRoof(g, -30, 0, 60, 176, 50);
+    for (let i = 0; i < 4; i++) {
+      const z = -60 + i * 40;
+      K.add(g, K.g.box(4, 20, 16), dark, 1, 20, z);
+      K.add(g, K.g.cyl(8, 8, 4, 8), dark, 1, 30, z, { rz: PI / 2 });
+    }
+    K.add(g, K.g.box(2, 8, 70), K.m(TEAM_HEX[team]), 1, 44, 0);
+    // A hound peering out of the second door.
+    const hound = K.pivot(g, 6, 18, -20);
+    const fur = K.m(0x6a5444);
+    K.add(hound, K.g.sph(6, 7, 5), fur, 0, 0, 0, { sx: 1.2 });
+    K.add(hound, K.g.box(7, 5, 6), K.m(0x3a2e26), 7, -1, 0);
+    for (const z of [-4, 4]) K.add(hound, K.g.cone(2, 5, 4), fur, -2, 6, z);
+    // The run: post-and-rail fence, two doghouses, a trough and bones.
+    for (let i = 0; i < 9; i++) K.add(g, K.g.cyl(2, 2.4, 26, 5), wood, 74, 13, -80 + i * 20);
+    for (const x of [24, 50]) for (const z of [-82, 82]) K.add(g, K.g.cyl(2, 2.4, 26, 5), wood, x, 13, z);
+    for (const y of [10, 22]) {
+      K.add(g, K.g.box(3, 3, 164), plank, 74, y, 0);
+      for (const z of [-82, 82]) K.add(g, K.g.box(74, 3, 3), plank, 37, y, z);
+    }
+    for (const z of [-50, 50]) {
+      K.add(g, K.g.box(22, 18, 22), plank, 42, 9, z);
+      gableRoof(g, 42, z, 22, 26, 18);
+      K.add(g, K.g.box(2, 10, 8), dark, 53, 6, z);
+    }
+    K.add(g, K.g.box(10, 6, 30), wood, 58, 3, 0);
+    for (const [x, z, r] of [[34, -14, 0.4], [52, 24, -0.8]]) K.add(g, K.g.cyl(1.3, 1.3, 12, 4), bone, x, 2, z, { rz: PI / 2, ry: r });
+    const lamp = glowSprite(0xff8a30, 40, 0.5); lamp.position.set(8, 40, 70);
+    g.add(lamp, ...teamFlag(team, -30, apex + 22, 0));
+    g.userData.tick = (b, time) => { hound.rotation.y = Math.sin(time * 0.8) * 0.5; };
+    return placeInSlot(g, slot, base);
+  }
+
+  // Mounted: a timber stable with a cupola, horses looking over the stall doors under an overhang,
+  // a paddock out front with hay bales and a trough, and a horseshoe over the middle stall.
+  function makeStables(slot, base, team) {
+    const g = new THREE.Group(), K = G.kit, PI = Math.PI;
+    const wood = K.m(0x3a2a1d), dark = K.m(0x16100b), plank = K.m(0x5a4330), hay = K.m(0xc9a850);
+    K.add(g, K.g.box(90, 12, 180), K.m(0x2f2f31), -20, 6, 0);
+    K.add(g, K.g.box(76, 58, 170), wood, -26, 41, 0);
+    const apex = gableRoof(g, -26, 0, 76, 180, 70);
+    K.add(g, K.g.box(20, 18, 20), wood, -26, apex + 4, 0);
+    K.add(g, K.g.cone(17, 18, 4), K.m(0x3b3226), -26, apex + 22, 0, { ry: PI / 4 });
+    K.add(g, K.g.box(20, 20, 2), dark, -26, 88, 91);
+    const heads = [];
+    [0x5a3a24, 0x2a1e16, 0x8a6a4a, 0xd8d0c0].forEach((c, i) => {
+      const z = -63 + i * 42;
+      K.add(g, K.g.box(4, 46, 30), dark, 13, 37, z);
+      K.add(g, K.g.box(5, 22, 30), plank, 14, 25, z);
+      const h = K.pivot(g, 14, 40, z);
+      K.add(h, K.g.cyl(4, 5, 16, 6), K.m(c), 4, 6, 0, { rz: -0.6 });
+      K.add(h, K.g.box(16, 7, 7), K.m(c), 14, 10, 0, { rz: -0.5 });
+      K.add(h, K.g.box(10, 3, 2), dark, 4, 12, 0, { rz: -0.6 });
+      heads.push(h);
+    });
+    K.add(g, K.g.torus(7, 2, 4, 10, PI * 1.4), K.metal(0x8a8f96), 15, 64, 0, { ry: PI / 2, rz: -PI * 0.2 });
+    K.add(g, K.g.box(26, 3, 176), plank, 26, 72, 0, { rz: -0.3 });
+    for (const z of [-84, 84]) K.add(g, K.g.cyl(2, 2, 62, 5), wood, 36, 37, z);
+    // Paddock.
+    for (let i = 0; i < 7; i++) K.add(g, K.g.cyl(2, 2.4, 28, 5), wood, 78, 14, -78 + i * 26);
+    for (const y of [12, 24]) {
+      K.add(g, K.g.box(3, 3, 160), plank, 78, y, 0);
+      for (const z of [-80, 80]) K.add(g, K.g.box(36, 3, 3), plank, 60, y, z);
+    }
+    for (const [x, y, z] of [[56, 8, -66], [56, 8, -48], [56, 22, -57]]) K.add(g, K.g.box(14, 14, 18), hay, x, y, z);
+    K.add(g, K.g.box(10, 8, 40), wood, 62, 4, 34);
+    const lamp = glowSprite(0xff8a30, 44, 0.5); lamp.position.set(20, 56, 21);
+    g.add(lamp, ...teamFlag(team, -26, apex + 50, 0));
+    g.userData.tick = (b, time) => { heads.forEach((h, i) => { h.rotation.z = Math.sin(time * 1.3 + i * 1.7) * 0.15; }); };
+    return placeInSlot(g, slot, base);
+  }
+
+  // War machines: an open-sided siege shed under a lean-to roof, a war wagon half built inside with its
+  // bronze cannon, spare wheels, a forge chimney at the back and a crane swinging a barrel out front.
+  function makeSiegeWorks(slot, base, team) {
+    const g = new THREE.Group(), K = G.kit, PI = Math.PI;
+    const wood = K.m(0x3a2a1d), dark = K.m(0x16100b), plank = K.m(0x5a4330), stoneM = K.m(0x2f2f31);
+    const bronze = K.metal(0x9a6a2a, 0.35), iron = K.metal(0x55595f, 0.45);
+    K.add(g, K.g.box(136, 12, 186), stoneM, 0, 6, 0);
+    K.add(g, K.g.box(20, 90, 170), K.m(0x45454a), -56, 57, 0);
+    K.add(g, K.g.box(28, 150, 28), stoneM, -56, 87, -60);
+    for (const z of [-84, 0, 84]) {
+      K.add(g, K.g.box(8, 100, 8), wood, 50, 62, z);
+      K.add(g, K.g.box(8, 128, 8), wood, -44, 76, z);
+    }
+    K.add(g, K.g.box(8, 8, 176), wood, 50, 112, 0);
+    K.add(g, K.g.box(8, 8, 176), wood, -44, 140, 0);
+    K.add(g, K.g.box(118, 5, 186), K.m(0x3b3226), 3, 128, 0, { rz: -0.29 });
+    K.add(g, K.g.box(110, 3, 176), K.m(0x7f8790), 3, 132, 0, { rz: -0.29 });
+    // The war wagon on the floor: plank bed, three of its four wheels, the cannon laid on top.
+    K.add(g, K.g.box(70, 6, 36), plank, 6, 30, 0);
+    K.add(g, K.g.box(70, 10, 3), iron, 6, 38, -17);
+    for (const [x, z] of [[-18, -21], [-18, 21], [30, -21]]) K.add(g, K.g.cyl(14, 14, 5, 10), dark, x, 26, z, { rx: PI / 2 });
+    K.add(g, K.g.cyl(7, 9, 60, 10), bronze, 8, 44, 0, { rz: PI / 2 });
+    K.add(g, K.g.torus(9, 2, 4, 10), bronze, -20, 44, 0, { ry: PI / 2 });
+    for (let i = 0; i < 3; i++) K.add(g, K.g.cyl(14, 14, 5, 10), dark, -40, 26, 30 + i * 18, { rz: PI / 2 - 0.25 });
+    K.add(g, K.g.box(18, 10, 10), iron, -30, 22, -40);
+    K.add(g, K.g.box(10, 12, 8), dark, -30, 13, -40);
+    // Crane: a mast and a swinging jib with a bronze barrel on its chain.
+    K.add(g, K.g.cyl(4, 5, 140, 6), wood, 64, 82, -64);
+    const jib = K.pivot(g, 64, 150, -64);
+    K.add(jib, K.g.box(70, 6, 6), wood, 25, 0, 0);
+    K.add(jib, K.g.cyl(0.8, 0.8, 50, 4), dark, 52, -25, 0);
+    K.add(jib, K.g.cyl(6, 6, 30, 8), bronze, 52, -58, 0, { rz: PI / 2 });
+    const forge = glowSprite(0xff7a2a, 60, 0.75); forge.position.set(-56, 170, -60);
+    const coals = glowSprite(0xff8a30, 46, 0.6); coals.position.set(-34, 26, -40);
+    g.add(forge, coals, ...teamFlag(team, -40, 170, 50));
+    g.userData.tick = (b, time) => { jib.rotation.y = 0.6 + Math.sin(time * 0.4) * 0.7; };
+    return placeInSlot(g, slot, base);
+  }
+
   // ---- Ally buildings: smaller than a barracks, each dressed for the specialist it trains. ----
 
   // Engineer Lodge: a timber workshop with an open lean-to, an anvil, a lumber stack and a hoist.
@@ -706,6 +931,183 @@
     return placeInSlot(g, slot, base);
   }
 
+  // Wall segment: a stretch of stone curtain wall following the base's edge, with a gatehouse in the
+  // middle (raised portcullis, lit by a lantern). Built in the segment's own frame: origin at its middle
+  // on the wall ring, +x pointing out of the base, the wall bending back toward the base at both ends.
+  function makeWallSegment(slot, base, team) {
+    const g = new THREE.Group();
+    const stoneM = mat(0x3a3a3e), stoneHi = mat(0x4c4c52), dark = mat(0x16100b), snowM = mat(0x7f8790), wood = mat(0x3a2a1d);
+    const parts = [];
+    const R = G.dist(slot.x, slot.y, base.x, base.y), span = Math.PI / 6, gate = 70 / R;
+    const at = d => [R * (Math.cos(d) - 1), R * Math.sin(d)];   // local (x, z) of the ring point at angle offset d
+    const add = (geo, m, x, y, z, ry = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; parts.push(o); return o; };
+    const H = 86, T = 26;
+    // Curtain wall on both sides of the gate, in short straight pieces with merlons and a snow crust.
+    for (const side of [-1, 1]) {
+      const d0 = gate + 0.02, d1 = span, n = Math.ceil((d1 - d0) * R / 40);
+      for (let i = 0; i < n; i++) {
+        const d = side * (d0 + (i + 0.5) / n * (d1 - d0)), [x, z] = at(d), len = (d1 - d0) * R / n + 4;
+        add(new THREE.BoxGeometry(T, H, len), i % 2 ? stoneM : stoneHi, x, H / 2, z, -d);
+        add(new THREE.BoxGeometry(T + 2, 4, len), snowM, x, H + 2, z, -d);
+        if (i % 2 === 0) add(new THREE.BoxGeometry(T - 4, 16, 14), stoneHi, x, H + 12, z, -d);
+      }
+      // Buttress pillar at the segment's end, where it meets the next one.
+      const [ex, ez] = at(side * span);
+      add(new THREE.BoxGeometry(T + 12, H + 14, 22), stoneHi, ex, (H + 14) / 2, ez, -side * span);
+    }
+    // Gatehouse: two towers, a lintel with the team banner, a raised portcullis.
+    for (const side of [-1, 1]) {
+      const [x, z] = at(side * gate);
+      add(new THREE.CylinderGeometry(24, 28, 130, 8), stoneHi, x, 65, z);
+      add(new THREE.CylinderGeometry(29, 29, 6, 8), dark, x, 133, z);
+      add(new THREE.ConeGeometry(30, 46, 8), mat(0x23262c), x, 159, z);
+      add(new THREE.ConeGeometry(18, 24, 8), snowM, x, 172, z);
+    }
+    const lintelLen = 2 * Math.sin(gate) * R + 20;
+    add(new THREE.BoxGeometry(T + 6, 30, lintelLen), stoneHi, 0, 112, 0);
+    for (let i = -3; i <= 3; i++) add(new THREE.BoxGeometry(3, 22, 3), dark, 6, 88, i * 16);   // portcullis teeth
+    add(new THREE.BoxGeometry(4, 4, lintelLen - 30), dark, 6, 98, 0);
+    add(new THREE.BoxGeometry(14, 10, 14), wood, T / 2 + 10, 136, 0);
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(30, 44), mat(TEAM_HEX[team], { side: THREE.DoubleSide }));
+    banner.position.set(T / 2 + 5, 108, 0); banner.rotation.y = Math.PI / 2;
+    const lantern = glowSprite(0xff8a30, 60, 0.7); lantern.position.set(T / 2 + 12, 128, 0);
+    g.add(...parts.map(shadowed), banner, lantern);
+    g.position.set(slot.x, 0, slot.y);
+    g.rotation.y = -slot.angle;
+    return g;
+  }
+
+  // Energy Weapon: a dark stone obelisk banded in gilt, glowing runes up its faces, and a crystal lens
+  // on a turning collar at the top that the ray pours out of.
+  function makeEnergy(slot, base, team) {
+    const g = new THREE.Group();
+    const stoneM = mat(0x2a2a30), stoneHi = mat(0x3e3e46), gilt = mat(0xb08a4e, { metalness: 0.6, roughness: 0.45 });
+    const rune = new THREE.MeshBasicMaterial({ color: 0x9fe8ff });
+    const parts = [];
+    const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parts.push(o); return o; };
+    add(new THREE.CylinderGeometry(60, 66, 12, 8), stoneM, 0, 6, 0).rotation.y = Math.PI / 8;
+    add(new THREE.CylinderGeometry(46, 52, 14, 8), stoneHi, 0, 19, 0).rotation.y = Math.PI / 8;
+    add(new THREE.CylinderGeometry(20, 32, 190, 4), stoneM, 0, 120, 0).rotation.y = Math.PI / 4;
+    for (const y of [60, 140, 210]) add(new THREE.CylinderGeometry(34 - y * 0.06, 35 - y * 0.06, 6, 4), gilt, 0, y, 0).rotation.y = Math.PI / 4;
+    for (let i = 0; i < 4; i++) {        // runes on each face
+      const a = i * Math.PI / 2 + Math.PI / 4;
+      for (const y of [90, 115, 175]) {
+        const w = (31 - y * 0.063) * 0.72;
+        add(new THREE.BoxGeometry(2, 12, 6), rune, Math.cos(a) * w, y, Math.sin(a) * w).rotation.y = -a;
+      }
+    }
+    // Turret: a gilt collar with three claws holding the lens crystal, aimed along +x.
+    const turret = new THREE.Group(); turret.position.y = 222;
+    turret.add(new THREE.Mesh(new THREE.CylinderGeometry(22, 18, 12, 8), gilt));
+    for (let i = 0; i < 3; i++) {
+      const a = i * Math.PI * 2 / 3;
+      const claw = new THREE.Mesh(new THREE.BoxGeometry(4, 34, 4), gilt);
+      claw.position.set(Math.cos(a) * 14 + 6, 20, Math.sin(a) * 14); claw.rotation.set(Math.sin(a) * 0.4, 0, -0.35);
+      turret.add(claw);
+    }
+    const lens = new THREE.Mesh(new THREE.OctahedronGeometry(16, 0), new THREE.MeshBasicMaterial({ color: 0xcff4ff }));
+    lens.position.set(12, 28, 0); lens.scale.set(1.4, 1, 1);
+    turret.add(lens);
+    const halo = glowSprite(0x9fe8ff, 110, 0.7); halo.position.y = 250;
+    const light = G.kit.light(0x9fe8ff, 1.2, 600, 2); light.position.y = 250;
+    g.add(...parts.map(shadowed), shadowed(turret), halo, light, ...teamFlag(team, -40, 120, -40));
+    g.userData.turret = turret;
+    return placeInSlot(g, slot, base);
+  }
+
+  // Rock Launcher: a squat mangonel on a stone turntable behind a low rampart, a pile of rocks at hand.
+  // The turntable turns to aim; the spoon arm whips forward when it fires (see aimTower).
+  function makeRock(slot, base, team) {
+    const g = new THREE.Group();
+    const wood = mat(0x3a2a1d), dark = mat(0x16100b), stoneM = mat(0x55555c), stoneLo = mat(0x2f2f31), rope = mat(0x7a6a4a);
+    const parts = [];
+    for (let i = 0; i < 10; i++) {        // low stone rampart around the back and sides
+      const a = Math.PI * 0.35 + (i / 9) * Math.PI * 1.3;
+      const blk = new THREE.Mesh(new THREE.BoxGeometry(22, 26, 40), i % 2 ? stoneM : stoneLo);
+      blk.position.set(Math.cos(a) * 70, 13, Math.sin(a) * 70); blk.rotation.y = -a;
+      parts.push(blk);
+    }
+    for (const [x, z, r] of [[-40, 50, 12], [-30, 58, 9], [-48, 40, 8], [-36, 46, 7]]) {   // rock pile
+      const rk = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), stoneM); rk.position.set(x, r * 0.8, z); parts.push(rk);
+    }
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(50, 54, 16, 12), stoneLo); drum.position.y = 8;
+    const turret = new THREE.Group(); turret.position.y = 16;
+    const tparts = [];
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(90, 8, 60), wood); deck.position.y = 4; tparts.push(deck);
+    for (const z of [-24, 24]) {
+      const up = new THREE.Mesh(new THREE.BoxGeometry(14, 56, 10), wood); up.position.set(12, 34, z); tparts.push(up);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(18, 6, 14), dark); cap.position.set(12, 62, z); tparts.push(cap);
+    }
+    const crossbar = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 58), wood); crossbar.position.set(20, 56, 0); tparts.push(crossbar);
+    const torsion = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 44, 8).rotateX(Math.PI / 2), rope); torsion.position.set(-6, 14, 0); tparts.push(torsion);
+    // Arm pivots at the torsion bundle: at rest the spoon lies at the back, firing swings it up and over.
+    const arm = new THREE.Group(); arm.position.set(-6, 14, 0);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(70, 7, 7), wood); beam.position.x = -30;
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(11, 7, 8, 8), dark); cup.position.set(-64, 5, 0);
+    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(9, 0), stoneM); rock.position.set(-64, 14, 0);
+    arm.add(beam, cup, rock);
+    turret.add(...tparts.map(shadowed), shadowed(arm));
+    g.add(...parts.map(shadowed), shadowed(drum), turret, ...teamFlag(team, -60, 75, -50));
+    g.userData.turret = turret; g.userData.arm = arm; g.userData.rock = rock;
+    return placeInSlot(g, slot, base);
+  }
+
+  // Fortress: a square stone fort with four corner towers (archers on their tops) and a tall keep
+  // carrying a heavy crossbow on a turning platform. Its catapult is out of sight in the yard.
+  function makeFortress(slot, base, team) {
+    const g = new THREE.Group();
+    const stoneM = mat(0x2f2f31), stoneHi = mat(0x45454a), dark = mat(0x16100b), slate = mat(0x23262c), snowM = mat(0x7f8790);
+    const wood = mat(0x3a2a1d), gilt = mat(0xb08a4e, { metalness: 0.6, roughness: 0.45 });
+    const teamM = mat(TEAM_HEX[team], { side: THREE.DoubleSide }), skin = mat(0x8a6a52);
+    const winMat = new THREE.MeshBasicMaterial({ color: 0xffa040 });
+    const parts = [];
+    const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parts.push(o); return o; };
+    add(new THREE.BoxGeometry(176, 10, 176), stoneM, 0, 5, 0);
+    // Curtain walls with merlons.
+    for (let side = 0; side < 4; side++) {
+      const a = side * Math.PI / 2, c = Math.cos(a), s = Math.sin(a);
+      add(new THREE.BoxGeometry(18, 64, 150), stoneHi, c * 72, 42, s * 72).rotation.y = -a;
+      for (let k = -2; k <= 2; k++) add(new THREE.BoxGeometry(14, 12, 14), stoneM, c * 72 - s * k * 30, 80, s * 72 + c * k * 30);
+    }
+    // Gate on the side facing out of the base (placeInSlot turns +x toward the base center).
+    add(new THREE.BoxGeometry(8, 44, 40), dark, -82, 30, 0);
+    add(new THREE.BoxGeometry(6, 6, 46), gilt, -84, 54, 0);
+    // Corner towers, an archer on each.
+    for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const tx = x * 76, tz = z * 76;
+      add(new THREE.CylinderGeometry(24, 28, 110, 8), stoneM, tx, 60, tz);
+      add(new THREE.CylinderGeometry(29, 29, 6, 8), gilt, tx, 116, tz);
+      for (let k = 0; k < 6; k++) {
+        const a = k / 6 * Math.PI * 2;
+        add(new THREE.BoxGeometry(9, 12, 9), stoneHi, tx + Math.cos(a) * 25, 125, tz + Math.sin(a) * 25);
+      }
+      add(new THREE.CylinderGeometry(5, 7, 18, 6), teamM, tx + 6, 128, tz);
+      add(new THREE.SphereGeometry(5, 6, 5), skin, tx + 6, 142, tz);
+      add(new THREE.BoxGeometry(4, 16, 10), winMat, tx + x * 24, 70, tz + z * 4).rotation.y = -Math.atan2(z, x);
+    }
+    // Keep: tall square tower with lit windows and a banner on every face.
+    add(new THREE.BoxGeometry(80, 170, 80), stoneHi, 0, 95, 0);
+    add(new THREE.BoxGeometry(88, 8, 88), gilt, 0, 182, 0);
+    for (let side = 0; side < 4; side++) {
+      const a = side * Math.PI / 2, c = Math.cos(a), s = Math.sin(a);
+      for (const k of [-24, 24]) add(new THREE.BoxGeometry(14, 14, 14), stoneM, c * 38 - s * k, 194, s * 38 + c * k);
+      add(new THREE.BoxGeometry(4, 26, 10), winMat, c * 41, 130, s * 41).rotation.y = -a;
+      add(new THREE.PlaneGeometry(24, 56), teamM, c * 42, 70, s * 42).rotation.y = Math.PI / 2 - a;
+    }
+    // Turret on the keep's roof: a heavy crossbow under a little slate roof, swinging toward its target.
+    const turret = new THREE.Group(); turret.position.y = 196;
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 6, 10), wood);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(60, 7, 9), wood); stock.position.set(30, 12, 0);
+    const prod = new THREE.Mesh(new THREE.BoxGeometry(6, 5, 60), dark); prod.position.set(54, 12, 0);
+    const roofM = new THREE.Mesh(new THREE.ConeGeometry(30, 34, 4), slate); roofM.position.set(-8, 40, 0); roofM.rotation.y = Math.PI / 4;
+    const roofS = new THREE.Mesh(new THREE.ConeGeometry(18, 18, 4), snowM); roofS.position.set(-8, 50, 0); roofS.rotation.y = Math.PI / 4;
+    turret.add(platform, stock, prod, roofM, roofS);
+    const fire = glowSprite(0xff8a30, 60, 0.5); fire.position.y = 205;
+    g.add(...parts.map(shadowed), shadowed(turret), fire, ...teamFlag(team, -20, 250, -20));
+    g.userData.turret = turret;
+    return placeInSlot(g, slot, base);
+  }
+
   // Command Center: a walled frost citadel. Stepped stone plinth, a crenellated octagonal curtain wall
   // with four slate-roofed turrets, a great gate flanked by braziers, and a tall keep with gilt trim,
   // team banners and a spire crowned by a glowing frost crystal. Faces the enemy side (+x = gate).
@@ -788,10 +1190,13 @@
   }
 
   const BUILDING_MODELS = { command: makeCommand, hut: makeHut, digin: makeDigin, support: makeSupport, siege: makeSiege, storm: makeStorm,
+    wallSegment: makeWallSegment, energy: makeEnergy, rock: makeRock, fortress: makeFortress,
     barracks: makeBarracks,
     barracksArmored: (s, b, t) => makeBarracks(s, b, t, 'armored'),
     barracksShort: (s, b, t) => makeBarracks(s, b, t, 'short'),
     barracksLong: (s, b, t) => makeBarracks(s, b, t, 'long'),
+    barracksSpear: makePikeYard, barracksElite: makeChampionYard, barracksCaster: makeMageTower,
+    barracksCreature: makeKennels, barracksMounted: makeStables, barracksWarMachine: makeSiegeWorks,
     allyEngineer: makeEngineerLodge, allyMedic: makeMedicTent, allyOfficer: makeOfficerQuarters, allyDemolitionist: makeDemoWorkshop };
   R.RACE_MODELS.human = { buildings: BUILDING_MODELS, unit: makeSoldier, shot: makeShot };
 
@@ -876,7 +1281,7 @@
         Object.assign(f, {
           moving: i % 2 === 0, swing: (i % 6) / 5, swingAlt: i % 4 < 2, castAnim: ((i * 7) % 10) / 9, castSlot: i % 4,
           lift: i % 5 === 0 ? 40 : 0, form: i % 3 === 0 ? 'melee' : 'ranged', dash: i % 7 === 3 ? { tx: e.x, ty: e.y } : null,
-          state: Object.assign({}, e.state, { orbit: i % 2 }), buffs: i % 3 === 1 ? { overclock: { t: 1 } } : {}
+          state: Object.assign({}, e.state, { orbit: i % 2 }), buffs: i % 3 === 1 ? { goFast: { t: 1 } } : {}
         });
         u.animate(u, f, 0.1 + i * 0.37, 1 / 60);
         const now = snap();
@@ -946,6 +1351,58 @@
     const eyeGlow = glowSprite(0xff8a20, 20, 0.8); eyeGlow.position.set(38, 58, 0);
     g.add(shadowed(body), shadowed(hump), shadowed(head), shadowed(t1), shadowed(t2), e1, e2, shadowed(a1), shadowed(a2), shadowed(post), chain, eyeGlow);
     g.userData = { fur };
+    return g;
+  }
+
+  // Tundra ox (neutral creature, see creatures.js): a shaggy brown ox with snow on its back, bone horns
+  // and pale eyes. Faces +x. Legs swing on hip pivots; the head pivots at the neck for the headbutt.
+  const oxGeo = {};
+  function makeCreature() {
+    const G3 = oxGeo, K = G.kit;
+    if (!G3.body) {
+      G3.body = new THREE.IcosahedronGeometry(26, 1);
+      G3.skirt = new THREE.CylinderGeometry(22, 30, 26, 8);
+      G3.hump = new THREE.IcosahedronGeometry(18, 1);
+      G3.snow = new THREE.IcosahedronGeometry(16, 1);
+      G3.head = new THREE.IcosahedronGeometry(12, 1);
+      G3.muzzle = new THREE.IcosahedronGeometry(7, 0);
+      G3.boss = new THREE.SphereGeometry(4.5, 6, 4);
+      G3.horn = new THREE.ConeGeometry(3, 16, 5);
+      G3.eye = new THREE.SphereGeometry(1.8, 5, 4);
+      G3.leg = new THREE.CylinderGeometry(5, 4, 30, 6);
+      G3.hoof = new THREE.CylinderGeometry(5.5, 5.5, 5, 6);
+      G3.tail = new THREE.ConeGeometry(4, 16, 5);
+    }
+    const g = new THREE.Group();
+    const fur = mat(0x6b5440);
+    const dark = K.m(0x3a2c20), snow = K.m(0xe8eef2), bone = K.m(0xcfc2a2), hoofMat = K.m(0x221a14);
+    const body = new THREE.Mesh(G3.body, fur); body.scale.set(1.45, 0.95, 0.95); body.position.y = 46;
+    const skirt = new THREE.Mesh(G3.skirt, fur); skirt.scale.set(1.5, 1, 1); skirt.position.y = 32;
+    const hump = new THREE.Mesh(G3.hump, fur); hump.position.set(14, 62, 0);
+    const back = new THREE.Mesh(G3.snow, snow); back.scale.set(1.7, 0.35, 0.85); back.position.set(2, 69, 0);
+    const tail = new THREE.Mesh(G3.tail, dark); tail.position.set(-38, 44, 0); tail.rotation.z = -2.4;
+    // Head on a neck pivot.
+    const head = new THREE.Group(); head.position.set(34, 50, 0);
+    const skull = new THREE.Mesh(G3.head, fur); skull.scale.set(1.25, 1, 0.95); skull.position.set(10, -4, 0);
+    const muzzle = new THREE.Mesh(G3.muzzle, dark); muzzle.position.set(21, -9, 0);
+    head.add(shadowed(skull), muzzle);
+    for (const s of [1, -1]) {
+      const boss = new THREE.Mesh(G3.boss, bone); boss.position.set(8, 5, 6 * s);
+      const horn = new THREE.Mesh(G3.horn, bone); horn.position.set(9, -2, 15 * s); horn.rotation.x = s * 2.3;
+      const tip = new THREE.Mesh(G3.horn, bone); tip.scale.setScalar(0.6); tip.position.set(13, 1, 20 * s); tip.rotation.set(s * 0.5, 0, -0.9);
+      const eye = new THREE.Mesh(G3.eye, K.lit(0xcfe8ff)); eye.position.set(17, 0, 7 * s);
+      head.add(boss, horn, tip, eye);
+    }
+    const legs = [];
+    for (const [lx, lz] of [[22, 12], [22, -12], [-22, 12], [-22, -12]]) {
+      const hip = new THREE.Group(); hip.position.set(lx, 32, lz);
+      const leg = new THREE.Mesh(G3.leg, fur); leg.position.y = -15;
+      const hoof = new THREE.Mesh(G3.hoof, hoofMat); hoof.position.y = -30;
+      hip.add(leg, hoof);
+      legs.push(hip);
+    }
+    g.add(shadowed(body), shadowed(skirt), shadowed(hump), back, tail, shadowed(head), ...legs.map(shadowed));
+    g.userData = { fur, head, legs };
     return g;
   }
 
@@ -1199,13 +1656,14 @@
     root.position.y = 2;
     const mark = K.glow(0xb28cff, 34, 0.9);
     const burn = K.glow(0xff7a2a, R0 * 3, 0.35);
-    g.add(shield, stun, root, mark, burn);
+    const poison = K.glow(0x8fe05a, R0 * 2.6, 0.4);
+    g.add(shield, stun, root, mark, burn, poison);
     scene.add(g);
-    return { g, shield, shieldMat, stun, root, mark, burn };
+    return { g, shield, shieldMat, stun, root, mark, burn, poison };
   }
   function syncStatus(e) {
     let v = statusViews.get(e);
-    const show = !e.dead && (e.shieldAmt > 0 || e.stunTimer > 0 || e.rootTimer > 0 || (e.marks && e.marks.shadow) || e.dots.length);
+    const show = !e.dead && (e.shieldAmt > 0 || e.stunTimer > 0 || e.rootTimer > 0 || (e.marks && (e.marks.shadow || e.marks.poison)) || e.dots.length);
     if (!show) { if (v) v.g.visible = false; return; }
     if (!v) { v = makeStatus(e); statusViews.set(e, v); }
     v.g.visible = true;
@@ -1222,6 +1680,37 @@
     v.burn.position.y = e.r * 1.4;
     v.burn.material.color.setHex(e.dots.length && e.dots[0].color === '#b28cff' ? 0x9a6cff : 0xff7a2a);
     v.burn.material.opacity = 0.25 + Math.random() * 0.2;
+    v.poison.visible = !!(e.marks && e.marks.poison);
+    v.poison.position.y = e.r * 1.2;
+    v.poison.material.opacity = 0.25 + Math.sin(time * 4 + e.x) * 0.1;
+  }
+
+  // Fade a hero model to `alpha` (1 = solid). Its materials are copied first so shared ones stay solid.
+  function ghost(m, alpha) {
+    const u = m.userData;
+    if ((u.ghost ?? 1) === alpha) return;
+    u.ghost = alpha;
+    if (!u.ownMats) {
+      const swap = new Map();
+      m.traverse(o => {
+        if (!o.isMesh || Array.isArray(o.material)) return;
+        const c = o.material.clone();
+        c.userData.base = { transparent: c.transparent, opacity: c.opacity, depthWrite: c.depthWrite };
+        o.userData.baseCast = o.castShadow;
+        swap.set(o.material, c); o.material = c;
+      });
+      if (u.flashMats) u.flashMats = u.flashMats.map(fm => swap.get(fm) || fm);
+      u.ownMats = true;
+    }
+    m.traverse(o => {
+      if (!o.isMesh || !o.material.userData.base) return;
+      const mat = o.material, b = mat.userData.base;
+      mat.transparent = alpha < 1 || b.transparent;
+      mat.opacity = b.opacity * alpha;
+      mat.depthWrite = alpha < 1 ? false : b.depthWrite;
+      mat.needsUpdate = true;
+    });
+    m.traverse(o => { if (o.isMesh && 'baseCast' in o.userData) o.castShadow = alpha === 1 && o.userData.baseCast; });
   }
 
   function syncEntities(hero, dt) {
@@ -1235,7 +1724,7 @@
       let m = meshes.get(e);
       if (!m) {
         // Heroes are one of a kind; everything else is drawn instanced.
-        m = e instanceof G.Hero ? heroModel(e) : e instanceof G.Soldier ? unitModel(e) : makeAlgox();
+        m = e instanceof G.Hero ? heroModel(e) : e instanceof G.Soldier ? unitModel(e) : e instanceof G.Creature ? makeCreature() : makeAlgox();
         meshes.set(e, m); addModel(m, !(e instanceof G.Hero));
       }
       m.visible = !e.dead;
@@ -1253,8 +1742,9 @@
           u.armR.rotation.x = k <= 0 ? 0 : k > 0.6 ? (1 - k) / 0.4 * -0.6 : -0.6 + (0.6 - k) / 0.6 * 1.9;
         }
         m.position.y += e.lift;
-        // Untouchable heroes (mid-ultimate) flicker.
+        // Untouchable heroes (mid-ultimate) flicker; invisible ones are a faint ghost (hidden per view below).
         m.visible = !e.untargetable || Math.sin(time * 60) > -0.2;
+        ghost(m, e.invisible ? 0.3 : 1);
         const light = e === hero ? heroLight : foeLight;
         light.color.setHex(e.def.color);
         light.position.set(e.x, 90 + e.lift, e.y);
@@ -1283,6 +1773,19 @@
           u.aura.userData.ringMat.opacity = 0.35 + p * 0.35;
           u.aura.userData.fillMat.opacity = 0.05 + p * 0.06;
         }
+      } else if (e instanceof G.Creature) {
+        const u = m.userData, k = e.swing;
+        m.rotation.y = -e.facing;
+        u.fur.emissive.setHex(tint);
+        // Walk: diagonal legs swing together. Idle: slow breathing.
+        const step = e.moving ? Math.sin(time * 9 + e.homeX) : 0;
+        u.legs.forEach((l, i) => { l.rotation.z = step * 0.45 * (i === 0 || i === 3 ? 1 : -1); });
+        m.scale.y = e.moving ? 1 : 1 + Math.sin(time * 1.6 + e.homeX) * 0.02;
+        // Headbutt: head rears up, then drives down and forward with a lunge of the whole body.
+        const lunge = k <= 0 ? 0 : k > 0.75 ? -(1 - k) / 0.25 : Math.sin((0.75 - k) / 0.75 * Math.PI);
+        u.head.rotation.z = k <= 0 ? 0 : k > 0.75 ? (1 - k) / 0.25 * 0.5 : 0.5 - (0.75 - k) / 0.75 * 0.9;
+        m.position.x += Math.cos(e.facing) * lunge * 10;
+        m.position.z += Math.sin(e.facing) * lunge * 10;
       } else {
         m.rotation.y = -Math.atan2(hero.y - e.y, hero.x - e.x);
         const fur = m.userData.fur;
@@ -1368,7 +1871,7 @@
 
       for (const s of v.slots) {
         const built = meshes.get(s.slot);
-        if (built && !s.slot.building) { crumble(built, s.slot.x, s.slot.y); meshes.delete(s.slot); s.mesh.visible = true; }
+        if (built && !s.slot.building) { crumble(built, s.slot.x, s.slot.y); meshes.delete(s.slot); s.mesh.visible = !s.slot.wall; }
         if (s.slot.building) {
           s.mesh.visible = false;
           if (!meshes.has(s.slot)) { const h = buildingModel(s.slot, v.base, s.slot.building); meshes.set(s.slot, h); addModel(h, true); }
@@ -1383,7 +1886,7 @@
   function paintSlots(hero, hover) {
     for (const v of baseViews) {
       for (const s of v.slots) {
-        if (s.slot.building || s.slot.core) continue;
+        if (s.slot.building || s.slot.core || s.slot.wall) continue;
         const isHover = hover && hover.slot === s.slot;
         const ok = isHover && !G.buildCheck(hero, v.base, s.slot);
         s.mesh.material.color.setHex(isHover ? (ok ? 0x6adf7a : 0xd04a3a) : 0xc9d2da);
@@ -1405,6 +1908,45 @@
       const f = b.fired || 0;   // 1 just fired -> 0 reloaded
       u.arm.rotation.z = f > 0.7 ? -0.25 - (1 - f) / 0.3 * 1.9 : -0.25 - f / 0.7 * 1.9;
       u.rock.visible = f < 0.3;
+    }
+  }
+
+  // Energy beams: a flickering ray from the tower's lens to its locked target, thicker and brighter as
+  // the damage builds up. One per beaming building, made on demand.
+  const beams = new Map();   // building -> { group, ray, glow, spark }
+  function makeBeam(b) {
+    const color = new THREE.Color(G.raceDef(b.team).shotFx.trail).lerp(new THREE.Color(0xffffff), 0.35);
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5);
+    const add = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false });
+    const ray = new THREE.Mesh(geo, add(0xffffff, 0.95)), glow = new THREE.Mesh(geo, add(color, 0.35));
+    const spark = glowSprite(color.getHex(), 70, 0.95), muzzle = glowSprite(color.getHex(), 60, 0.9);
+    const group = new THREE.Group();
+    group.add(ray, glow, spark, muzzle);
+    ray.frustumCulled = glow.frustumCulled = false;
+    return { group, ray, glow, spark, muzzle };
+  }
+  const beamFrom = new THREE.Vector3(), beamTo = new THREE.Vector3();
+  function syncBeams() {
+    for (const [b, v] of beams) if (b.dead || !b.beam || b.beam.dead) { scene.remove(v.group); beams.delete(b); }
+    for (const b of G.buildingList()) {
+      const t = b.beam;
+      if (!t || t.dead || b.dead) continue;
+      let v = beams.get(b);
+      if (!v) { v = makeBeam(b); beams.set(b, v); scene.add(v.group); }
+      const w = G.weaponsOf(b.type).find(x => x.beam);
+      // Lens at the top of the tower, nudged toward the target; aim at the target's chest.
+      const a = Math.atan2(t.y - b.y, t.x - b.x);
+      beamFrom.set(b.x + Math.cos(a) * 14, w ? w.muzzle : 250, b.y + Math.sin(a) * 14);
+      beamTo.set(t.x, t instanceof G.Entity ? Math.min(60, barHeight(t) * 0.45) + (t.lift || 0) : 60, t.y);
+      const len = beamFrom.distanceTo(beamTo);
+      const level = w ? G.clamp(Math.log2((b.beamDmg || w.damage) / w.damage) / Math.log2(w.maxDamage / w.damage), 0, 1) : 1;
+      const flick = 0.85 + 0.15 * Math.sin(time * 47) + 0.1 * Math.sin(time * 23.3);
+      for (const [m, r] of [[v.ray, 1.6 + level * 3], [v.glow, 5 + level * 9]]) {
+        m.position.copy(beamFrom); m.lookAt(beamTo);
+        m.scale.set(r * flick, r * flick, len);
+      }
+      v.spark.position.copy(beamTo); v.spark.scale.setScalar((50 + level * 70) * flick);
+      v.muzzle.position.copy(beamFrom); v.muzzle.scale.setScalar((40 + level * 40) * flick);
     }
   }
 
@@ -1794,7 +2336,7 @@
     const c = octx;
 
     for (const e of G.entities) {
-      if (e.dead) continue;
+      if (e.dead || G.unseen(e, hero)) continue;
       const isHero = e instanceof G.Hero;
       const isSoldier = e instanceof G.Soldier;
       if (isSoldier && e.hp >= e.maxHp) continue;  // keep squads uncluttered until hurt
@@ -1802,7 +2344,7 @@
       if (s.behind || !cam.isVisible(e.x, e.y, 80)) continue;
       const w = isHero ? 46 : isSoldier ? 22 : 58, x = Math.round(s.x - w / 2), y = Math.round(s.y);
       c.fillStyle = 'rgba(0,0,0,0.75)'; c.fillRect(x - 2, y - 2, w + 4, 8);
-      c.fillStyle = isHero ? (e.team === G.TEAM.PLAYER ? '#6f9a3c' : '#d8452e') : e.team === G.TEAM.PLAYER ? '#5a86b8' : '#9b241c';
+      c.fillStyle = isHero ? (e.team === G.TEAM.PLAYER ? '#6f9a3c' : '#d8452e') : e.team === G.TEAM.PLAYER ? '#5a86b8' : e.team === G.TEAM.NEUTRAL ? '#c9a24a' : '#9b241c';
       c.fillRect(x, y, w * (e.hp / e.maxHp), 4);
       if (e.shieldAmt > 0) { c.fillStyle = 'rgba(230,245,255,0.85)'; c.fillRect(x, y - 3, Math.min(w, w * e.shieldAmt / e.maxHp), 2); }
       c.strokeStyle = '#5a4a32'; c.lineWidth = 1; c.strokeRect(x - 2.5, y - 2.5, w + 5, 9);
@@ -1990,6 +2532,7 @@
     updateDebris(dt);
     syncProjectiles();
     syncShots();
+    syncBeams();
     syncCoins();
     syncParticles();
 
@@ -2043,7 +2586,19 @@
         renderer.setScissor(cam.x, y, cam.w, cam.h);
       } else renderer.setViewport(0, 0, viewW, viewH);
      
+      // Invisible enemy heroes vanish from this view (model, status marks and light).
+      const hidden = [];
+      for (const e of G.entities) {
+        if (!(e instanceof G.Hero) || e.dead || !G.unseen(e, hero)) continue;
+        const m = meshes.get(e), sv = statusViews.get(e);
+        if (m && m.visible) { m.visible = false; hidden.push(m); }
+        if (sv && sv.g.visible) { sv.g.visible = false; hidden.push(sv.g); }
+      }
+      const foeGlow = foeLight.intensity;
+      if (hidden.length && G.entities.some(e => e instanceof G.Hero && e !== hero && !e.dead && G.unseen(e, hero))) foeLight.intensity = 0;
       renderer.render(scene, cam.three);
+      for (const o of hidden) o.visible = true;
+      foeLight.intensity = foeGlow;
 
       octx.save();
       octx.beginPath(); octx.rect(cam.x, cam.y, cam.w, cam.h); octx.clip();

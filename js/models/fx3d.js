@@ -220,40 +220,45 @@
   };
 
   // ---------------------------------------------------------------------------------------------
-  // Bannerspear: rallying banner / great standard
+  // Bannerspear: her banners. style doom (cursed, red-black), courage (team colors), hope (the great white standard)
   // ---------------------------------------------------------------------------------------------
+  const BANNER_STYLES = {
+    doom: { cloth: 0x2a0c0c, ring: 0xff4a3a, fill: 0xff2a1a, fillA: 0.14, emblem: 0xff4a3a, tip: 0xff6a5a },
+    courage: { cloth: null, ring: 0xe8c060, fill: null, fillA: 0.08, emblem: 0xffd060, tip: 0xffe08a },
+    hope: { cloth: 0xf2eedc, ring: 0xc8ffd0, fill: 0x9fe3a0, fillA: 0.1, emblem: 0x9fe3a0, tip: 0xe8ffe8 }
+  };
   FX.banner = {
     make(o) {
       const grp = new THREE.Group();
-      const S = o.big ? 1.5 : 1;
+      const S = o.big ? 1.5 : 1, st = BANNER_STYLES[o.style] || BANNER_STYLES.courage;
       const teamC = K.teamHex(o.team), gold = K.metal(0xd9a530, 0.35), wood = K.m(0x4a3320);
       const pole = new THREE.Group(); grp.add(pole);
       add(pole, g.cyl(3 * S, 4 * S, 190 * S, 8), wood, 0, 95 * S, 0);
       add(pole, g.cone(6 * S, 26 * S, 6), gold, 0, 200 * S, 0);
       add(pole, g.cyl(1.8 * S, 1.8 * S, 80 * S, 6), gold, 32 * S, 178 * S, 0, { rz: Math.PI / 2 });
       for (const x of [-6, 72]) add(pole, g.sph(4 * S, 8, 6), gold, x * S, 178 * S, 0);
-      const clothMat = K.mat(teamC, { side: THREE.DoubleSide, flatShading: false });
+      const clothMat = K.mat(st.cloth ?? teamC, { side: THREE.DoubleSide, flatShading: false });
       const cloth = K.cloth(70 * S, 100 * S, clothMat, 6, 8);
       cloth.mesh.position.set(34 * S, 126 * S, 0);
       pole.add(cloth.mesh);
       // Emblem: a golden spearhead on the cloth.
-      add(pole, g.cone(9 * S, 34 * S, 4), K.lit(0xffd060), 34 * S, 130 * S, 2, { rz: Math.PI, shadow: false });
-      add(pole, g.cone(9 * S, 34 * S, 4), K.lit(0xffd060), 34 * S, 130 * S, -2, { rz: Math.PI, shadow: false });
+      add(pole, g.cone(9 * S, 34 * S, 4), K.lit(st.emblem), 34 * S, 130 * S, 2, { rz: Math.PI, shadow: false });
+      add(pole, g.cone(9 * S, 34 * S, 4), K.lit(st.emblem), 34 * S, 130 * S, -2, { rz: Math.PI, shadow: false });
       // Tassels
       for (const x of [4, 34, 64]) add(pole, g.cone(3 * S, 14 * S, 4), gold, x * S, 72 * S, 0, { rx: Math.PI });
-      const fin = K.glow(0xffe08a, 70 * S, 0.9); fin.position.y = 205 * S; pole.add(fin);
+      const fin = K.glow(st.tip, 70 * S, 0.9); fin.position.y = 205 * S; pole.add(fin);
       // Ground: base stones and aura ring.
       for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; add(grp, g.dodec(8 * S), K.m(0x55555c), Math.cos(a) * 14 * S, 4, Math.sin(a) * 14 * S); }
-      const ringMat = glowMat(o.big ? 0xffd060 : 0xe8c060, 0.55);
+      const ringMat = glowMat(st.ring, 0.55);
       const ring = new THREE.Mesh(g.ring(o.r - 6, o.r, 72), ringMat); ring.position.y = 2;
-      const fill = new THREE.Mesh(g.disc(o.r, 72), fadeMat(o.big ? 0xffd060 : teamC, 0.08)); fill.position.y = 1.5;
+      const fill = new THREE.Mesh(g.disc(o.r, 72), fadeMat(st.fill ?? teamC, st.fillA)); fill.position.y = 1.5;
       const ticks = new THREE.Group(); ticks.position.y = 2.2;
       for (let i = 0; i < 16; i++) {
-        const t = new THREE.Mesh(new THREE.RingGeometry(o.r - 18, o.r - 10, 6, 1, i / 16 * Math.PI * 2, 0.18).rotateX(-Math.PI / 2), glowMat(0xffe08a, 0.6));
+        const t = new THREE.Mesh(new THREE.RingGeometry(o.r - 18, o.r - 10, 6, 1, i / 16 * Math.PI * 2, 0.18).rotateX(-Math.PI / 2), glowMat(st.tip, 0.6));
         ticks.add(t);
       }
       grp.add(ring, fill, ticks);
-      grp.userData = { pole, cloth, ring, ringMat, fill, ticks, S };
+      grp.userData = { pole, cloth, ring, ringMat, fill, ticks, S, fillA: st.fillA };
       return at(grp, o.x, o.y);
     },
     update(m, o, time) {
@@ -264,7 +269,7 @@
       u.ticks.rotation.y = time * 0.4;
       const k = env(o, 0.25, 0.4);
       u.ringMat.opacity = (0.4 + Math.sin(time * 4) * 0.15) * k;
-      u.fill.material.opacity = 0.08 * k;
+      u.fill.material.opacity = u.fillA * k;
       u.pole.scale.setScalar(Math.max(0.01, Math.min(1, (o.dur - o.t) / 0.3)));
     }
   };
@@ -303,6 +308,45 @@
         b.position.y = -20 + u.v * t - 260 * t * t;
         b.rotation.x += u.spin * 0.016; b.rotation.z += u.spin * 0.01;
         b.visible = b.position.y > -18;
+      }
+    }
+  };
+
+  // Death's Curse: a low, churning cloud of grave-smoke drifting along the ground (o.x, o.y move).
+  FX.curseCloud = {
+    make(o) {
+      const grp = new THREE.Group();
+      const shadow = new THREE.Mesh(g.disc(o.r, 40), fadeMat(0x05040a, 0.55)); shadow.position.y = 1.3;
+      const rim = new THREE.Mesh(g.ring(o.r * 0.85, o.r, 48), glowMat(0x9a7cc8, 0.5)); rim.position.y = 1.7;
+      grp.add(shadow, rim);
+      // Puffs: soft smoke sprites rolling over each other, lit from within by sickly motes.
+      o.puffs = [];
+      for (let i = 0; i < 18; i++) {
+        const p = new THREE.Sprite(new THREE.SpriteMaterial({ map: K.glowTex(), color: i % 3 ? 0x1c1428 : 0x4a3468, transparent: true, opacity: 0.95, depthWrite: false }));
+        p.userData = { a: Math.random() * 6.28, d: Math.random() * o.r * 0.75, s: o.r * (1.1 + Math.random() * 0.7), h: 14 + Math.random() * 34, ph: Math.random() * 6.28 };
+        grp.add(p); o.puffs.push(p);
+      }
+      o.motes = [];
+      for (let i = 0; i < 8; i++) {
+        const s = K.glow(0xb89cff, 22, 0.7);
+        s.userData = { a: Math.random() * 6.28, d: Math.random() * o.r * 0.8, ph: Math.random() };
+        grp.add(s); o.motes.push(s);
+      }
+      return remember(at(grp, o.x, o.y));
+    },
+    update(m, o, time) {
+      m.position.set(o.x, 0, o.y);
+      const k = env(o, 0.3, 0.4);
+      setFade(m, k);
+      for (const p of o.puffs) {
+        const u = p.userData, a = u.a + time * 0.8;
+        p.position.set(Math.cos(a) * u.d, u.h + Math.sin(time * 2 + u.ph) * 5, Math.sin(a) * u.d);
+        p.scale.setScalar(u.s * (0.9 + Math.sin(time * 1.5 + u.ph) * 0.12));
+      }
+      for (const s of o.motes) {
+        const u = s.userData, f = (time * 0.6 + u.ph) % 1;
+        s.position.set(Math.cos(u.a - time) * u.d, 10 + f * 60, Math.sin(u.a - time) * u.d);
+        s.material.opacity = (1 - f) * 0.7 * k;
       }
     }
   };

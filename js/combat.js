@@ -14,7 +14,7 @@
     const out = [];
     if (opts.units !== false) {
       for (const e of G.entities)
-        if (!e.dead && e.team !== team && !e.untargetable && !(G.dev && e instanceof G.Hero)) out.push(e);
+        if (!e.dead && e.team !== team && !e.untargetable && !e.invisible && !(G.dev && e instanceof G.Hero)) out.push(e);
     }
     if (opts.buildings !== false) {
       for (const b of G.buildingList())
@@ -22,6 +22,9 @@
     }
     return out;
   };
+
+  // An invisible hero (Blinkblade's Now You See Me) is hidden from views with no local player on its team.
+  G.unseen = (e, viewer) => !!e.invisible && (viewer ? viewer.team !== e.team : !G.players.some(p => p.hero && p.hero.team === e.team));
 
   G.alliesOf = function (team) {
     return G.entities.filter(e => !e.dead && e.team === team);
@@ -107,12 +110,12 @@
     if (!isUnit(e) || e.dead) return;
     e.knock = { vx: Math.cos(angle) * dist / dur, vy: Math.sin(angle) * dist / dur, t: dur };
   };
-  // Damage over time. One stack per id: re-applying refreshes it.
-  G.burn = function (e, dps, dur, id = 'burn', color = '#ff8a30') {
+  // Damage over time. One stack per id: re-applying refreshes it. src: the hero behind it, if any.
+  G.burn = function (e, dps, dur, id = 'burn', color = '#ff8a30', src = null) {
     if (!isUnit(e) || e.dead) return;
     const old = e.dots.find(d => d.id === id);
-    if (old) { old.t = Math.max(old.t, dur); old.dps = Math.max(old.dps, dps); return; }
-    e.dots.push({ id, dps, t: dur, color });
+    if (old) { old.t = Math.max(old.t, dur); old.dps = Math.max(old.dps, dps); old.src = src || old.src; return; }
+    e.dots.push({ id, dps, t: dur, color, src });
   };
   G.shield = function (e, amount, dur, color = 0x9fdcff, onEnd = null) {
     if (e.shieldAmt > 0 && e.onShieldEnd) e.onShieldEnd = null;  // a fresh shield replaces the old one quietly
@@ -179,7 +182,7 @@
     const ux = dx / d, uy = dy / d;
     for (let dist = Math.min(d, range); dist > 20; dist -= 8) {
       const nx = hero.x + ux * dist, ny = hero.y + uy * dist;
-      if (!G.map.blocked(nx, ny, hero.r)) return { x: nx, y: ny };
+      if (!G.map.blocked(nx, ny, hero.r, hero.team)) return { x: nx, y: ny };
     }
     return null;
   };

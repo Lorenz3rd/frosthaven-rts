@@ -238,6 +238,166 @@
     hideBanner(gr, team, -70, 0, 0, 110);
     return K.placeInSlot(gr, slot, base);
   };
+  B.barracksSpear = (slot, base, team) => {   // Pike Lodge: a snow-block igloo behind racks of bone pikes with ice blades
+    const gr = new THREE.Group();
+    snowMound(gr, -20, 0, 92, 12);
+    add(gr, g.dome(56, 14, 7), K.m(C.snow), -30, 6, 0, { sy: 0.95 });
+    for (const p of [0.3, 0.7, 1.1]) add(gr, g.torus(56 * Math.cos(p), 2, 4, 20), K.m(0xc8d4de), -30, 6 + 53 * Math.sin(p), 0, { rx: PI / 2 });
+    add(gr, g.cyl(18, 18, 34, 10), K.m(C.snow), 28, 10, 0, { rz: PI / 2 });
+    add(gr, g.cyl(13, 13, 2, 10), K.m(0x1a1210), 45, 12, 0, { rz: PI / 2 });
+    K.addGlow(gr, 0xff8a30, 50, 48, 14, 0, 0.5);
+    for (const z of [-52, 52]) {
+      for (const dz of [-24, 24]) add(gr, g.cyl(3, 4, 70, 6), K.m(C.bone), 40, 35, z + dz);
+      for (const y of [30, 62]) add(gr, g.cyl(2.4, 2.4, 54, 5), K.m(C.hideDark), 40, y, z, { rx: PI / 2 });
+      for (let i = 0; i < 6; i++) {
+        const pz = z - 20 + i * 8;
+        add(gr, g.cyl(1.4, 1.4, 130, 4), K.m(C.wood), 44, 65, pz, { rz: 0.08 });
+        add(gr, g.cone(3.2, 16, 4), glowIce(), 38.4, 137, pz, { rz: 0.08, shadow: false });
+      }
+    }
+    brazier(gr, 66, 0);
+    hideBanner(gr, team, -50, 0, -75, 110);
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksElite = (slot, base, team) => {   // Berserker Rib Hall: a hide vault on mammoth ribs above a stone fighting pit
+    const gr = new THREE.Group();
+    add(gr, g.box(80, 10, 180), K.m(C.stone), -30, 5, 0);
+    const vault = new THREE.CylinderGeometry(46, 46, 160, 14, 1, false, -PI / 2, PI).rotateX(-PI / 2);
+    add(gr, vault, K.m(C.hide), -30, 10, 0);
+    for (let i = 0; i < 6; i++) add(gr, new THREE.TorusGeometry(50, 4, 5, 14, PI), K.m(C.bone), -30, 8, -70 + i * 28);
+    add(gr, g.box(4, 40, 30), K.m(0x1a1210), 15, 30, 0);
+    for (const z of [-30, 30]) add(gr, g.box(2, 40, 4), K.lit(0x7fd8ff), 16, 36, z, { rz: 0.4, shadow: false });
+    for (const s of [-1, 1]) add(gr, g.box(3, 50, 8), iceMat(), 17, 66, 0, { rx: s * 0.7 });
+    // The pit: a ring of stone blocks around trampled snow, wolf skulls on posts.
+    add(gr, g.cyl(34, 34, 2, 16), K.m(0x9aa4ae), 46, 1, 0);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * PI * 2;
+      add(gr, g.box(14, 12, 16), K.m(C.stone), 46 + Math.cos(a) * 38, 6, Math.sin(a) * 38, { ry: -a });
+    }
+    for (const [x, z] of [[10, -50], [10, 50], [80, -40], [80, 40]]) {
+      add(gr, g.cyl(2.5, 3, 50, 6), K.m(C.wood), x, 25, z);
+      add(gr, g.sph(7, 8, 6), K.m(C.bone), x + 2, 54, z, { sx: 1.4 });
+      for (const dz of [-4, 4]) add(gr, g.cone(2, 7, 4), K.m(C.bone), x - 2, 61, z + dz);
+      for (const dz of [-3, 3]) add(gr, g.sph(1.6, 5, 4), K.lit(0x9fdcff), x + 10, 56, z + dz, { shadow: false });
+    }
+    brazier(gr, 46, 0);
+    hideBanner(gr, team, -60, 0, 80, 120);
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksCaster = (slot, base, team) => {   // Spirit Arch: crossed tusk arches over a rune pool and a floating ice crystal
+    const gr = new THREE.Group();
+    add(gr, g.cyl(80, 86, 8, 12), K.m(C.stone), 0, 4, 0);
+    for (const ry of [0, PI / 2]) add(gr, new THREE.TorusGeometry(58, 5, 6, 16, PI), K.m(C.tusk), 10, 8, 0, { ry });
+    add(gr, g.cyl(26, 28, 4, 12), K.m(0x2e3238), 10, 10, 0);
+    add(gr, g.cyl(23, 23, 1, 12), K.lit(0x9fdcff), 10, 12.2, 0, { shadow: false });
+    K.addGlow(gr, 0x9fdcff, 90, 10, 20, 0, 0.6);
+    const crystal = pivot(gr, 10, 40, 0);
+    add(crystal, g.oct(14), glowIce(), 0, 0, 0, { sy: 2, shadow: false });
+    K.addGlow(crystal, 0x9fdcff, 110, 0, 0, 0, 0.7);
+    const runes = pivot(gr, 10, 40, 0);
+    for (let i = 0; i < 4; i++) add(runes, g.box(5, 8, 2), glowIce(), Math.cos(i * PI / 2) * 28, 0, Math.sin(i * PI / 2) * 28, { ry: -i * PI / 2, shadow: false });
+    for (let i = 0; i < 6; i++) {   // standing rune stones around the rim, leaving room for the yurt
+      if (i === 3) continue;
+      const a = PI / 6 + i * PI / 3;
+      add(gr, g.box(10, 40, 14), K.m(C.stone), 10 + Math.cos(a) * 70, 26, Math.sin(a) * 70, { ry: -a });
+      add(gr, g.box(2, 14, 4), K.lit(0x7fd8ff), 10 + Math.cos(a) * 64.5, 30, Math.sin(a) * 64.5, { ry: -a, shadow: false });
+    }
+    // The shaman's yurt behind the arch, crowned with antlers.
+    add(gr, g.dome(26, 12, 6), K.m(C.hide), -56, 8, -46, { sy: 1.2 });
+    for (const s of [-1, 1]) {
+      add(gr, g.cyl(1.6, 2.4, 30, 5), K.m(C.bone), -56, 48, -46 + s * 8, { rx: s * 0.5 });
+      add(gr, g.cyl(1.2, 1.6, 14, 5), K.m(C.bone), -56, 56, -46 + s * 12, { rx: -s * 0.4 });
+    }
+    hideBanner(gr, team, -60, 0, 60, 110);
+    gr.userData = {
+      tick(b, time) {
+        crystal.rotation.y = time; crystal.position.y = 40 + Math.sin(time * 1.6) * 5;
+        runes.rotation.y = -time * 0.7; runes.position.y = 34 + Math.sin(time * 1.2) * 4;
+      }
+    };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksCreature = (slot, base, team) => {   // Wolf Pens: ice-block pens before a hide kennel, a wolf-skull totem pole
+    const gr = new THREE.Group();
+    snowMound(gr, 0, 0, 92, 8);
+    add(gr, g.box(30, 40, 160), K.m(C.hideDark), -50, 20, 0);
+    add(gr, g.box(60, 4, 172), K.m(C.hide), -36, 44, 0, { rz: -0.35 });
+    for (const z of [-80, -27, 27, 80]) add(gr, g.cyl(2.5, 3, 44, 6), K.m(C.bone), -10, 22, z);
+    // Pens: ice walls in front, ice dividers back to the kennel.
+    for (let i = 0; i < 6; i++) add(gr, g.box(10, 18, 28), iceMat(), 72, 9, -70 + i * 28);
+    for (const z of [-84, -28, 28, 84]) add(gr, g.box(80, 14, 8), iceMat(), 32, 7, z);
+    for (const [x, z, ry] of [[30, -56, 0.4], [44, 56, -2.6]]) {   // frost wolves curled up in their pens
+      const w = pivot(gr, x, 0, z); w.rotation.y = ry;
+      add(w, g.sph(9, 8, 6), K.m(C.fur), 0, 8, 0, { sx: 1.6 });
+      add(w, g.sph(6, 7, 5), K.m(C.fur), 14, 9, 0);
+      add(w, g.box(6, 4, 4), K.m(C.furDark), 20, 7, 0);
+      for (const dz of [-3, 3]) add(w, g.cone(1.6, 5, 4), K.m(C.fur), 12, 15, dz);
+      for (let k = 0; k < 3; k++) add(w, g.cone(2, 7, 4), iceMat(), -6 + k * 6, 16, 0);
+    }
+    add(gr, g.cyl(5, 7, 110, 8), K.m(C.wood), -10, 55, 0);
+    add(gr, g.sph(12, 8, 6), K.m(C.bone), -6, 114, 0, { sx: 1.3 });
+    add(gr, g.box(14, 8, 10), K.m(C.bone), 8, 110, 0);
+    for (const z of [-6, 6]) {
+      add(gr, g.cone(3, 12, 4), K.m(C.bone), -10, 128, z);
+      add(gr, g.sph(2, 5, 4), K.lit(0x9fdcff), 4, 117, z * 0.8, { shadow: false });
+    }
+    K.addGlow(gr, 0x9fdcff, 50, 6, 117, 0, 0.6);
+    hideBanner(gr, team, -55, 0, -70, 100);
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksMounted = (slot, base, team) => {   // Rhino Corral: an open lean-to stable, a bone-fenced corral, a rhino-skull gate
+    const gr = new THREE.Group();
+    snowMound(gr, 0, 0, 92, 8);
+    add(gr, g.box(24, 64, 170), K.m(C.wood), -60, 32, 0);
+    add(gr, g.box(74, 5, 178), K.m(C.hide), -30, 66, 0, { rz: -0.35 });
+    add(gr, g.box(66, 3, 170), K.m(C.snow), -30, 70, 0, { rz: -0.35 });
+    for (const z of [-84, -42, 0, 42, 84]) add(gr, g.cyl(3, 3.5, 54, 6), K.m(C.bone), 0, 27, z);
+    for (const z of [-42, 0, 42]) add(gr, g.box(56, 30, 4), K.m(C.hideDark), -28, 15, z);
+    // A woolly rhino resting in its stall.
+    add(gr, g.sph(20, 10, 8), K.m(C.hideDark), -26, 20, -62, { sx: 1.3, sz: 0.8 });
+    add(gr, g.sph(11, 8, 6), K.m(C.hideDark), -2, 22, -62);
+    add(gr, g.cone(4, 18, 5), K.m(C.tusk), 8, 34, -62, { rz: -0.5 });
+    for (let i = 0; i < 4; i++) add(gr, g.dome(10, 8, 4), K.m(0x8a9a5a), -40 + i * 18, 0, 22 + (i % 2) * 40);   // lichen fodder
+    // Corral fence: bone posts with log rails, a gate under a rhino skull.
+    for (let i = 0; i < 7; i++) if (i !== 3) add(gr, g.cyl(2.5, 3, 34, 6), K.m(C.bone), 78, 17, -78 + i * 26);
+    for (const y of [12, 26]) {
+      for (const z of [-50, 50]) add(gr, g.cyl(2, 2, 56, 5), K.m(C.wood), 78, y, z, { rx: PI / 2 });
+      for (const z of [-80, 80]) add(gr, g.cyl(2, 2, 76, 5), K.m(C.wood), 40, y, z, { rz: PI / 2 });
+    }
+    for (const z of [-20, 20]) add(gr, g.cyl(4, 5, 70, 6), K.m(C.tusk), 80, 35, z);
+    add(gr, g.cyl(3, 3, 48, 6), K.m(C.wood), 80, 70, 0, { rx: PI / 2 });
+    add(gr, g.sph(12, 8, 6), K.m(C.bone), 84, 82, 0, { sx: 1.4 });
+    add(gr, g.cone(5, 30, 5), K.m(C.tusk), 102, 92, 0, { rz: -0.9 });
+    add(gr, g.cone(3, 14, 5), K.m(C.tusk), 92, 92, 0, { rz: -0.5 });
+    K.addGlow(gr, 0xff8a30, 50, 20, 30, -20, 0.5);
+    hideBanner(gr, team, -60, 0, 0, 130);
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksWarMachine = (slot, base, team) => {   // Mammoth Yard: a bone scaffold raising a howdah, glacier boulders, a swinging hoist
+    const gr = new THREE.Group();
+    snowMound(gr, 0, 0, 94, 8);
+    for (const [x, z] of [[-50, -60], [-50, 60], [30, -60], [30, 60]]) add(gr, g.cyl(5, 7, 150, 6), K.m(C.bone), x, 75, z);
+    for (const x of [-50, 30]) add(gr, g.cyl(4, 4, 126, 6), K.m(C.bone), x, 146, 0, { rx: PI / 2 });
+    for (const z of [-60, 60]) add(gr, g.cyl(4, 4, 86, 6), K.m(C.bone), -10, 146, z, { rz: PI / 2 });
+    // The half-built howdah on its platform.
+    add(gr, g.box(80, 8, 100), K.m(C.wood), -10, 96, 0);
+    add(gr, g.box(80, 30, 4), K.m(C.hide), -10, 115, -48);
+    add(gr, g.box(4, 30, 100), K.m(C.hide), -48, 115, 0);
+    for (let i = 0; i < 4; i++) add(gr, g.cyl(2, 2, 34, 5), K.m(C.bone), 28, 117, -36 + i * 24);
+    add(gr, g.box(2, 18, 28), K.m(K.teamHex(team)), -49, 115, 0);
+    for (const [x, z] of [[-40, -20], [-40, 30], [16, -20], [16, 30]]) add(gr, g.cyl(3, 3, 88, 5), K.m(C.wood), x, 52, z);
+    mammothSkull(gr, 58, 30, -40, 1.5);
+    for (const [x, y, z, r] of [[56, 14, 50, 14], [70, 12, 30, 12], [60, 34, 40, 11]]) add(gr, g.ico(r, 0), iceMat(), x, y, z);
+    // Hoist: a rope from the scaffold with a block of glacier ice swaying on it.
+    const hoist = pivot(gr, 30, 146, 30);
+    add(hoist, g.cyl(0.8, 0.8, 60, 4), K.m(C.hideDark), 20, -30, 0);
+    add(hoist, g.box(18, 18, 18), iceMat(), 20, -66, 0);
+    add(hoist, g.box(56, 4, 4), K.m(C.wood), 10, 2, 0);
+    brazier(gr, -60, 80, false);
+    hideBanner(gr, team, -70, 0, -80, 120);
+    gr.userData = { tick(b, time) { hoist.rotation.y = Math.sin(time * 0.5) * 0.6; hoist.rotation.z = Math.sin(time * 1.4) * 0.06; } };
+    return K.placeInSlot(gr, slot, base);
+  };
 
   // Allies
   B.allyEngineer = (slot, base, team) => {

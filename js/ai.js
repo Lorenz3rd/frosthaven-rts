@@ -10,7 +10,7 @@
   // aimErr: random spread (world units) on aimed casts. lead: how far ahead of a moving hero it aims (0..1).
   // minHit / ultMin: what a normal cast / the ultimate must be worth (enemy hero 5, soldier 1, see worth()).
   // retreat: health fraction at which it backs off. aggro: bias toward picking fights with the hero.
-  // careful: stays out of enemy tower fire, saves mana for the ultimate, won't grab gold under the enemy's nose.
+  // careful: stays out of enemy tower fire, saves the ultimate for big moments, won't grab gold under the enemy's nose.
   // defend: how much it cares about its buildings being hit. buildPause: seconds of rest between builds.
   // plan: 'basic' (a few barracks and dig-ins) or 'full' (see nextBuild). kite: ranged heroes step back from
   // melee heroes between shots. troopDmg / gold: the enemy team's bonuses (see G.teamBonus in races.js).
@@ -37,12 +37,15 @@
   //   dash {range}: close on the enemy hero, or escape   blink {range}: escape only
   //   buff {radius}: while brawling   shield {radius}: while under fire   zone {radius}: rally/heal ground
   //   summon {range}: raise fighters near foes   rewind: undo recent damage   twin: Geminate's form strike
+  //   vanish: turn invisible to escape, or before jumping the enemy hero
+  //   shadows: hits foes in our shadows   dark: while standing in our shadow mid-fight
+  //   consume {range}: spends every shadow on one foe (worth more the more shadows there are)
   const PLAYBOOK = {
-    bannerspear: { q: { use: 'line', range: 250, width: 70 }, w: { use: 'dash', range: 340 }, e: { use: 'zone', radius: 230 }, r: { use: 'aoe', range: 520, radius: 220 } },
-    boneshaper: { q: { use: 'line', range: 700, width: 40 }, w: { use: 'summon', range: 350 }, e: { use: 'shield', radius: 120 }, r: { use: 'aoe', range: 300, radius: 180 } },
-    deathwalker: { q: { use: 'line', range: 560, width: 68 }, w: { use: 'blink', range: 430 }, e: { use: 'foe', range: 380 }, r: { use: 'aoe', range: 600, radius: 260 } },
+    bannerspear: { q: { use: 'aoe', range: 500, radius: 150 }, w: { use: 'zone', radius: 300 }, e: { use: 'cone', range: 200, half: 0.9 }, r: { use: 'zone', radius: 500 } },
+    boneshaper: { q: { use: 'summon', range: 350 }, w: { use: 'line', range: 750, width: 200 }, e: { use: 'zone', radius: 500 }, r: { use: 'summon', range: 300 } },
+    deathwalker: { q: { use: 'aoe', range: 350, radius: 125 }, w: { use: 'shadows' }, e: { use: 'dark' }, r: { use: 'consume', range: 400 } },
     geminate: { q: { use: 'twin' }, w: { use: 'dash', range: 280 }, e: { use: 'buff', radius: 220 }, r: { use: 'self', radius: 550 } },
-    blinkblade: { q: { use: 'foe', range: 420, engage: true }, w: { use: 'buff', radius: 200 }, e: { use: 'rewind' }, r: { use: 'aoe', range: 450, radius: 350 } },
+    blinkblade: { q: { use: 'cone', range: 250, half: 0.7 }, w: { use: 'self', radius: 400 }, e: { use: 'buff', radius: 200 }, r: { use: 'vanish' } },
     crushingtide: { q: { use: 'cone', range: 180, half: 0.95 }, w: { use: 'shield', radius: 150 }, e: { use: 'aoe', range: 400, radius: 170 }, r: { use: 'line', range: 900, width: 280 } },
     trapper: { q: { use: 'line', range: 620, width: 24, first: true }, w: { use: 'aoe', range: 340, radius: 50 }, e: { use: 'aoe', range: 440, radius: 130 }, r: { use: 'aoe', range: 500, radius: 210 } },
     pyroclast: { q: { use: 'line', range: 650, width: 28, first: true, splash: 100 }, w: { use: 'aoe', range: 420, radius: 150 }, e: { use: 'cone', range: 270, half: 0.62 }, r: { use: 'aoe', range: 650, radius: 240 } },
@@ -76,12 +79,14 @@
     if (e instanceof G.Hero) return 5;
     if (isSoldier(e)) {
       const k = G.SQUAD_KINDS[e.kind];
-      return e.kind === 'colossus' || e.kind === 'warMachine' ? 4 : k.ally ? 2 : e.kind === 'armored' || e.kind === 'mounted' ? 1.5 : 1;
+      return e.kind === 'boneBall' || e.kind === 'warMachine' ? 4 : k.ally ? 2 : e.kind === 'armored' || e.kind === 'mounted' ? 1.5 : 1;
     }
     if (e instanceof G.Entity) return 0;  // training beasts
     return 0.4;                           // buildings
   }
   const sumWorth = list => list.reduce((a, e) => a + worth(e), 0);
+  // The Deathwalker's shadow pools.
+  const myShadows = () => G.fx.filter(o => o.kind === 'shadowPool' && o.owner === me && !o.dead);
 
   // The targetable enemy hero nearest us, or null (dead, untouchable, or developer mode).
   function enemyHero() {
@@ -103,10 +108,10 @@
   function towerDps(x, y, team = me.team) {
     let dps = 0;
     for (const b of G.buildingList()) {
-      const w = G.BUILDINGS[b.type].weapon;
-      if (!w || b.dead || b.team === team) continue;
+      if (b.dead || b.team === team) continue;
       const d = G.dist(x, y, b.x, b.y);
-      if (d <= w.range + 20 && d >= w.minRange) dps += w.damage / w.cooldown;
+      for (const w of G.weaponsOf(b.type))
+        if (d <= w.range + 20 && d >= w.minRange) dps += (w.maxDamage || w.damage) / w.cooldown;
     }
     return dps;
   }
@@ -134,8 +139,7 @@
     const foeDps = heroDps(foe) + soldierDps(theirs) * 0.5 + towerDps(me.x, me.y);
     let a = Math.log((me.hp / foeDps) / (foe.hp / myDps));
     const ult = me.def.abilities[3];
-    if ((me.cooldowns[ult.key] || 0) <= 0 && me.mana >= ult.mana) a += 0.2;
-    a += (me.mana / me.maxMana - 0.5) * 0.3;
+    if ((me.cooldowns[ult.key] || 0) <= 0) a += 0.2;
     return a + diff.aggro;
   }
 
@@ -189,7 +193,7 @@
   function safeSpot(foe) {
     let best = null, bs = Infinity;
     for (const b of G.bases) {
-      if (b.team !== me.team || !b.slots.some(s => s.building && G.BUILDINGS[s.building.type].weapon)) continue;
+      if (b.team !== me.team || !b.slots.some(s => s.building && G.weaponsOf(s.building.type).length)) continue;
       const d = G.dist(me.x, me.y, b.x, b.y);
       const s = d + (foe && G.dist(foe.x, foe.y, b.x, b.y) < d ? 2500 : 0);
       if (s < bs) { bs = s; best = b; }
@@ -241,7 +245,7 @@
     }
     const c = t => n[t] || 0;
     const troops = BARRACKS.reduce((a, t) => a + c(t), 0);
-    const towers = c('digin') + c('support') + c('siege');
+    const towers = c('digin') + c('support') + c('siege') + c('rock') + c('energy');
     if (diff.plan === 'basic') return troops <= c('digin') * 2 ? (troops % 2 ? 'barracksShort' : 'barracks') : 'digin';
     if (troops < 1) return 'barracks';
     if (troops < 2) return 'barracksLong';
@@ -256,14 +260,14 @@
     if (c('siege') < 1) return 'siege';
     if (damaged && c('allyEngineer') < 1) return 'allyEngineer';
     // From here on: alternate more troops and more towers.
-    return troops <= towers ? BARRACKS[troops % BARRACKS.length] : ['support', 'digin', 'siege'][towers % 3];
+    return troops <= towers ? BARRACKS[troops % BARRACKS.length] : ['support', 'digin', 'siege', 'rock', 'energy'][towers % 5];
   }
 
   // The base and slot for a new building: bases we hold before new ground, closest to the enemy first,
   // and never one the enemy is fighting over. Towers and barracks face the enemy; allies sit at the back.
   function placeFor(type) {
     const goalCC = G.commandCenters[me.team === T.ENEMY ? T.PLAYER : T.ENEMY];
-    const open = b => (b.team === null || b.team === me.team) && b.slots.some(s => !s.core && !s.building);
+    const open = b => (b.team === null || b.team === me.team) && b.slots.some(s => !s.core && !s.wall && !s.building);
     let bases = G.bases.filter(b => b.side === me.team && open(b));
     if (!bases.length) bases = G.bases.filter(open);
     let best = null, bs = Infinity;
@@ -274,7 +278,7 @@
     }
     if (!best) return null;
     const back = /^ally/.test(type) ? -1 : 1;
-    const slot = best.slots.filter(s => !s.core && !s.building)
+    const slot = best.slots.filter(s => !s.core && !s.wall && !s.building)
       .sort((p, q) => back * (G.dist(p.x, p.y, goalCC.x, goalCC.y) - G.dist(q.x, q.y, goalCC.x, goalCC.y)))[0];
     return { base: best, slot };
   }
@@ -416,6 +420,7 @@
     const ux = dx / L, uy = dy / L;
     let hit = null, ha = Infinity;
     for (const k of G.map.solids()) {
+      if (k.wall) continue;  // walls: G.steer finds the way through or around (see walk)
       if (G.dist(k.x, k.y, tx, ty) < k.cr + me.r + 4) continue;  // the destination itself (a building we attack)
       const rx = k.x - me.x, ry = k.y - me.y;
       const along = rx * ux + ry * uy;
@@ -429,7 +434,7 @@
     for (const off of [hit.clear + 16, hit.clear + 45, hit.clear + 90]) {
       for (const s of [pref, -pref]) {
         const wx = hit.k.x + nx * off * s, wy = hit.k.y + ny * off * s;
-        if (!G.map.blocked(wx, wy, me.r)) return { x: wx, y: wy };
+        if (!G.map.blocked(wx, wy, me.r, me.team)) return { x: wx, y: wy };
       }
     }
     return { x: tx, y: ty };
@@ -438,6 +443,10 @@
   function walk(x, y) {
     me.attackTarget = null;
     if (G.dist(me.x, me.y, x, y) < 14) { me.target = null; return; }
+    // An enemy wall shuts the way: break through it. Otherwise make for a gate or round the wall.
+    const via = G.steer(me, x, y);
+    if (via && via.wall) { me.target = null; me.attackTarget = via.wall; return; }
+    if (via) { x = via.x; y = via.y; }
     nav.walked = true;
     if (nav.detourT > 0) { me.moveTo(nav.detour.x, nav.detour.y); return; }
     if (nav.t <= 0 || !nav.to || G.dist(nav.to.x, nav.to.y, x, y) > 40 || G.dist(me.x, me.y, nav.wp.x, nav.wp.y) < 24) {
@@ -457,7 +466,7 @@
       const a = Math.atan2(nav.to.y - me.y, nav.to.x - me.x) + (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.6);
       for (const k of [0, Math.PI]) {
         const x = me.x + Math.cos(a + k) * 150, y = me.y + Math.sin(a + k) * 150;
-        if (!G.map.blocked(x, y, me.r)) { nav.detour = { x, y }; nav.detourT = 0.6; break; }
+        if (!G.map.blocked(x, y, me.r, me.team)) { nav.detour = { x, y }; nav.detourT = 0.6; break; }
       }
     }
     nav.lx = me.x; nav.ly = me.y; nav.walked = false;
@@ -469,7 +478,7 @@
     if (d > me.r + (t.r || 0) + b.range) { walk(t.x, t.y); return; }
     if (diff.kite && b.ranged && t instanceof G.Hero && !t.basic.ranged && me.attackCd > 0.2 && d < me.r + t.r + t.basic.range + 90) {
       const a = Math.atan2(me.y - t.y, me.x - t.x), x = me.x + Math.cos(a) * 160, y = me.y + Math.sin(a) * 160;
-      if (!G.map.blocked(x, y, me.r)) { me.attackTarget = null; me.moveTo(x, y); return; }
+      if (!G.map.blocked(x, y, me.r, me.team)) { me.attackTarget = null; me.moveTo(x, y); return; }
     }
     me.attackTarget = t;
   }
@@ -478,7 +487,7 @@
     if (me.dash || me.stunned || me.state.cutting > 0 || !goal) return;
     const g = goal;
     if (g.kind === 'fight' || g.kind === 'attack') {
-      if (g.t.dead || g.t.untargetable) { me.attackTarget = null; replan(); return; }
+      if (g.t.dead || g.t.untargetable || g.t.invisible) { me.attackTarget = null; replan(); return; }
       attack(g.t);
     } else if (g.kind === 'build') build(g);
     else if (g.kind === 'collect') { if (g.c.dead) replan(); else walk(g.c.x, g.c.y); }
@@ -575,6 +584,27 @@
         const p = G.clampReach(me, list[0].x, list[0].y, how.range);
         return { score: Math.min(8, w), x: p.x, y: p.y };
       }
+      case 'shadows': {
+        const hits = new Set();
+        for (const s of myShadows()) for (const e of G.foesInRadius(team, s.x, s.y, s.r)) hits.add(e);
+        return scored([...hits], me, false);
+      }
+      case 'dark': {
+        const lit = !myShadows().some(s => G.dist(s.x, s.y, me.x, me.y) <= s.r);
+        return lit ? null : sumWorth(G.foesInRadius(team, me.x, me.y, 450, { buildings: false })) >= 2 || hpF < 0.7 ? { score: 6, x: me.x, y: me.y } : null;
+      }
+      case 'consume': {
+        const n = myShadows().length, list = targets(how.range);
+        if (!n || !list.length) return null;
+        const t = list.includes(foe) ? foe : list.reduce((a, b) => (worth(b) > worth(a) ? b : a));
+        return { score: worth(t) * n / 2, x: t.x, y: t.y, hero: t === foe };
+      }
+      case 'vanish': {
+        // Slip away when losing, or vanish before jumping a nearby enemy hero.
+        if (me.invisible) return null;
+        if (fleeing || (hpF < 0.35 && foe && foeD < 500)) return { score: 9, x: me.x, y: me.y };
+        return duel && foeD < 600 && foeD > 200 ? { score: 6, x: me.x, y: me.y } : null;
+      }
       case 'rewind': {
         const h = me.history, past = h[Math.max(0, h.length - 30)];
         return past && past.hp - me.hp > me.maxHp * 0.22 && danger(past.x, past.y) <= danger(me.x, me.y) + 10 ? { score: 9, x: me.x, y: me.y } : null;
@@ -591,14 +621,12 @@
     const ult = me.def.abilities.find(a => a.ult);
     let best = null;
     for (const ab of me.def.abilities) {
-      if ((me.cooldowns[ab.key] || 0) > 0 || me.mana < ab.mana || !book[ab.key]) continue;
+      if (!G.canCast(me, ab) || !book[ab.key]) continue;
       const c = judge(book[ab.key], foe);
       if (!c) continue;
       // The ultimate waits for a big moment, or a hurt enemy hero in reach.
       const need = ab.ult && !(c.hero && foe && foe.hp / foe.maxHp < 0.6) ? diff.ultMin : diff.minHit;
       if (c.score < need) continue;
-      // Careful heroes don't spend the mana their ultimate is about to need on small casts.
-      if (!ab.ult && ult && diff.careful && c.score < 5 && (me.cooldowns[ult.key] || 0) < 3 && me.mana - ab.mana < ult.mana) continue;
       if (!best || c.score > best.c.score) best = { ab, c };
     }
     if (!best || Math.random() > diff.cast) return;

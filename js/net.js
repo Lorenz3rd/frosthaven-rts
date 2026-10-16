@@ -412,6 +412,7 @@
     demolish(h, b) { h.demolishTarget = b; },
     cast(h, ab, x, y) { return G.tryCast(h, ab, x, y); },
     follow(h) { return G.commandFollow(h); },
+    order(h, o) { return G.commandOrder(h, o); },
     build(h, hit, type, team) { return G.placeBuilding(h, hit, type, team); }
   };
   // A player's actions on their own hero, straight into the simulation.
@@ -446,9 +447,10 @@
         case 'd': { const b = refTo(c[1]); if (b && !b.dead && b.team === h.team && !G.BUILDINGS[b.type].command && !h.dead) C.demolish(h, b); break; }
         case 'c': { const ab = h.def.abilities[c[1]]; if (ab) C.cast(h, ab, num(c[2]), num(c[3])); break; }
         case 'f': if (!h.dead) C.follow(h); break;
+        case 'o': if (!h.dead && G.COMMAND_ORDERS.includes(c[1])) C.order(h, c[1]); break;
         case 'b': {
           const base = G.bases[c[1]], slot = base && base.slots[c[2]], def = G.BUILDINGS[c[3]];
-          if (slot && !slot.core && def && !def.command && !h.dead) C.build(h, { base, slot }, c[3]);
+          if (slot && !slot.core && !slot.wall && def && !def.command && def.menu !== false && !h.dead) C.build(h, { base, slot }, c[3]);
           break;
         }
       }
@@ -546,10 +548,11 @@
 
   // Entities send only what the renderer, HUD and controls read.
   const COMMON_F = ['x', 'y', 'r', 'hp', 'maxHp', 'team', 'dead', 'facing', 'flash', 'stunTimer', 'rootTimer', 'slowTimer', 'shieldAmt', 'shieldColor', 'marks', 'dots'];
-  const HERO_F = COMMON_F.concat(['def', 'swing', 'swingAlt', 'castAnim', 'castSlot', 'moving', 'lift', 'untargetable', 'buffs',
-    'mana', 'maxMana', 'gold', 'cooldowns', 'state', 'form', 'dash', 'attackTarget', 'demolishTarget', 'history']);
+  const HERO_F = COMMON_F.concat(['def', 'swing', 'swingAlt', 'castAnim', 'castSlot', 'moving', 'lift', 'untargetable', 'invisible', 'buffs',
+    'gold', 'cooldowns', 'state', 'form', 'dash', 'attackTarget', 'demolishTarget', 'history', 'unlock']);
   const SOLDIER_F = COMMON_F.concat(['kind', 'ranged', 'swing', 'moving', 'auraOn', 'aim']);
   const DUMMY_F = COMMON_F.concat(['homeX']);
+  const CREATURE_F = COMMON_F.concat(['homeX', 'swing', 'moving']);
   const ENC_SPECIAL = {
     def: e => e.def.id,
     dots: e => e.dots.map(d => d.color),
@@ -564,7 +567,7 @@
     }
   };
   function encEntity(e) {
-    const F = e instanceof G.Hero ? HERO_F : e instanceof G.Soldier ? SOLDIER_F : DUMMY_F;
+    const F = e instanceof G.Hero ? HERO_F : e instanceof G.Soldier ? SOLDIER_F : e instanceof G.Creature ? CREATURE_F : DUMMY_F;
     const o = {};
     for (const k of F) {
       const s = ENC_SPECIAL[k];
@@ -573,14 +576,15 @@
     }
     return o;
   }
-  const slotKey = b => b.base.id * 8 + b.base.slots.indexOf(b.slot);
+  const slotKey = b => b.base.id * 16 + b.base.slots.indexOf(b.slot);   // build slots, wall slots, core
 
   // list(): live objects. cls(o): short type tag. encode(o) -> plain object. skip(o): fields not
   // re-sent after creation (clients advance those themselves).
   const COLLS = {
-    E: { list: () => G.entities, cls: e => (e instanceof G.Hero ? 'H' : e instanceof G.Soldier ? 'S' : 'D'), encode: encEntity },
+    E: { list: () => G.entities, cls: e => (e instanceof G.Hero ? 'H' : e instanceof G.Soldier ? 'S' : e instanceof G.Creature ? 'N' : 'D'), encode: encEntity },
     B: { list: () => G.buildingList(), cls: b => 'b',
-      encode: b => ({ k: slotKey(b), type: b.type, team: b.team, hp: round(b.hp), maxHp: b.maxHp, aim: b.aim === undefined ? null : round(b.aim), fired: b.fired ? round(b.fired) : 0 }) },
+      encode: b => ({ k: slotKey(b), type: b.type, team: b.team, hp: round(b.hp), maxHp: b.maxHp, aim: b.aim === undefined ? null : round(b.aim), fired: b.fired ? round(b.fired) : 0,
+        beam: b.beam ? enc(b.beam, 1) : null, beamDmg: b.beamDmg || 0 }) },
     P: { list: () => G.projectiles, cls: () => 'p', encode: encPlain, skip: () => ['t', 'traveled'] },
     T: { list: () => G.shots, cls: () => 't', encode: encPlain, skip: s => (s.rolling ? ['t'] : ['t', 'x', 'y', 'h']) },
     C: { list: () => G.coins, cls: () => 'c', encode: encPlain, skip: () => ['t'] },
@@ -691,18 +695,18 @@
   }
 
   function makeEntity(cls) {
-    const proto = cls === 'H' ? G.Hero.prototype : cls === 'S' ? G.Soldier.prototype : G.AlgoxDummy.prototype;
+    const proto = cls === 'H' ? G.Hero.prototype : cls === 'S' ? G.Soldier.prototype : cls === 'N' ? G.Creature.prototype : G.AlgoxDummy.prototype;
     return Object.assign(Object.create(proto), {
       x: 0, y: 0, r: 10, hp: 1, maxHp: 1, team: 0, dead: false, facing: 0, flash: 0,
       slowTimer: 0, slowAmount: 0, stunTimer: 0, rootTimer: 0, knock: null, dots: [], dotAcc: 0,
       shieldAmt: 0, shieldTimer: 0, shieldColor: 0x9fdcff, buffs: {}, marks: {},
-      swing: 0, swingAlt: false, castAnim: 0, castSlot: -1, moving: false, lift: 0, untargetable: false,
+      swing: 0, swingAlt: false, castAnim: 0, castSlot: -1, moving: false, lift: 0, untargetable: false, invisible: false,
       cooldowns: {}, state: {}, history: [], form: null, dash: null, attackTarget: null, demolishTarget: null,
-      mana: 0, maxMana: 1, gold: 0, target: null, followers: [], homeX: 0
+      gold: 0, target: null, followers: [], homeX: 0, unlock: G.newUnlocks()
     });
   }
 
-  function slotOf(k) { const base = G.bases[Math.floor(k / 8)]; return base ? { base, slot: base.slots[k % 8] } : null; }
+  function slotOf(k) { const base = G.bases[Math.floor(k / 16)]; return base ? { base, slot: base.slots[k % 16] } : null; }
 
   function applyEntity(e, data, fresh) {
     let moved = false, nx = e._ix1, ny = e._iy1;
@@ -787,7 +791,7 @@
         const fresh = !!o._fresh;
         o._fresh = false;
         if (k === 'E') applyEntity(o, data, fresh);
-        else if (k === 'B') { for (const f in data) if (f !== 'k') o[f] = data[f]; if (o.aim === null) delete o.aim; }
+        else if (k === 'B') { for (const f in data) if (f !== 'k') o[f] = f === 'beam' ? dec(data[f]) : data[f]; if (o.aim === null) delete o.aim; }
         else {
           for (const f in data) o[f] = dec(data[f]);
           if (k === 'T' && fresh) { o.px = o.x; o.py = o.y; o.ph = o.h; }
@@ -884,6 +888,7 @@
         return true;
       },
       follow() { send(['f']); return true; },
+      order(o) { send(['o', o]); return true; },
       build(hit, type) { send(['b', hit.base.id, hit.base.slots.indexOf(hit.slot), type]); return true; }
     };
   };

@@ -1,9 +1,17 @@
-// Towers: buildings with a `weapon` (see G.BUILDINGS) pick a target and lob shots at it.
+// Towers: buildings with a `weapon` or `weapons` (see G.BUILDINGS) pick a target and lob shots at it.
 // Shots fly along an arc for a fixed time; arrows/bolts follow their target and hit it on arrival,
 // boulders land where the target stood when fired, then roll on along their flight line,
-// crushing what they touch with less force after every hit.
+// crushing what they touch with less force after every hit. Beams don't fly: they lock onto a
+// target and burn it, harder with every hit.
 (function (G) {
   G.shots = [];
+
+  // A building type's weapons, [] for none.
+  const NONE = [];
+  G.weaponsOf = function (type) {
+    const def = G.BUILDINGS[type];
+    return def.weapons || (def.weapon ? (def.weapons = [def.weapon]) : NONE);
+  };
 
   function candidates(b, w) {
     const out = [];
@@ -26,7 +34,7 @@
     }
     for (const c of list) {
       if (!best) { best = c; continue; }
-      if (w.pick === 'healthiest' ? c.e.hp > best.e.hp : c.d < best.d) best = c;
+      if (w.pick === 'healthiest' ? c.e.hp > best.e.hp : w.pick === 'maxHp' ? c.e.maxHp > best.e.maxHp || (c.e.maxHp === best.e.maxHp && c.d < best.d) : c.d < best.d) best = c;
     }
     return best && best.e;
   }
@@ -34,7 +42,7 @@
   function fire(b, w, t) {
     const d = G.dist(b.x, b.y, t.x, t.y);
     G.shots.push({
-      shot: w.shot, team: b.team, damage: w.damage, bldgMul: w.bldgMul, roll: w.roll,
+      shot: w.shot, team: b.team, damage: w.damage, bldgMul: w.bldgMul, roll: w.roll, splash: w.splash,
       x0: b.x, y0: b.y, h0: w.muzzle, target: w.roll ? null : t, tx: t.x, ty: t.y,
       t: 0, dur: Math.max(0.25, d / w.speed), arc: w.shot === 'boulder' ? d * 0.35 : d * 0.12,
       x: b.x, y: b.y, h: w.muzzle
@@ -48,7 +56,7 @@
     if (!s.roll) {
       // A shot from outside can still be stopped by a storm field the target moved into.
       // Soldiers' shots carry their kind, so troop strengths apply (see G.kindMul).
-      const hit = e => e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1) * G.kindMul(s.kind, e));
+      const hit = e => e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1) * G.kindMul(s.kind, e), s.kind ? { unit: true } : undefined);
       if (s.splash) {
         for (const e of G.hostilesOf(s.team))
           if (G.dist(e.x, e.y, s.tx, s.ty) <= s.splash + (e.r || 0) && G.canShoot(s.x0, s.y0, e)) hit(e);
@@ -57,6 +65,7 @@
       if (s.shot === 'rocket') { G.burst(s.tx, s.ty, fx.trail, 18, 200); G.burst(s.tx, s.ty, '#5a5450', 10, 120); }
       else if (s.shot === 'shell') { G.burst(s.tx, s.ty, fx.trail, 26, 260); G.burst(s.tx, s.ty, '#5a5450', 14, 160); }
       else if (s.shot === 'orb') G.burst(s.tx, s.ty, fx.trail, 16, 180);
+      else if (s.shot === 'boulder') { G.burst(s.tx, s.ty, '#8a7a66', 26, 240); G.burst(s.tx, s.ty, '#c9d2da', 12, 160); }
       else G.burst(s.tx, s.ty, fx.impact, 5, 80);
       if (s.splash) G.addFx('ring', { x: s.tx, y: s.ty, r0: 6, r1: s.splash, dur: 0.3, color: parseInt(fx.trail.slice(1), 16) });
       s.dead = true;
@@ -97,19 +106,43 @@
     }
   }
 
+  // Beam: hold the lock while the target lives, stays hostile and in range; otherwise lock onto a new
+  // one, starting over at the base damage. Hits every cooldown, then multiplies the damage for the next.
+  function beam(b, w, i) {
+    const t = b.beam;
+    const held = t && !t.dead && !t.untargetable && !t.invisible && t.team !== b.team && !(G.dev && t instanceof G.Hero) && G.canShoot(b.x, b.y, t) &&
+      G.dist(b.x, b.y, t.x, t.y) <= w.range + (t.r || 0);
+    if (!held) {
+      b.beam = pickTarget(b, w);
+      b.beamDmg = w.damage;
+      if (!b.beam) { b.cds[i] = 0.2; return; }
+    }
+    b.aim = Math.atan2(b.beam.y - b.y, b.beam.x - b.x);
+    b.cds[i] = w.cooldown;
+    b.beam.takeDamage(b.beamDmg);
+    b.fired = 1;
+    b.beamDmg = Math.min(w.maxDamage, b.beamDmg * w.ramp);
+    if (b.beam.dead) b.beam = null;
+  }
+
   // Called once per update step.
   G.updateTowers = function (dt) {
     for (const b of G.buildingList()) {
-      const w = G.BUILDINGS[b.type].weapon;
-      if (!w || b.dead) continue;
+      const ws = G.weaponsOf(b.type);
+      if (!ws.length || b.dead) continue;
       b.fired = Math.max(0, (b.fired || 0) - dt * 1.5);
-      if (b.cd === undefined) b.cd = 0;
-      if ((b.cd -= dt) > 0) continue;
-      const t = pickTarget(b, w);
-      if (!t) { b.cd = 0.2; continue; }  // nothing in range: look again soon
-      b.aim = Math.atan2(t.y - b.y, t.x - b.x);
-      b.cd = w.cooldown;
-      fire(b, w, t);
+      // One cooldown per weapon; several weapons start out of step so they don't all fire at once.
+      if (!b.cds) b.cds = ws.map((w, i) => i * 0.15);
+      for (let i = 0; i < ws.length; i++) {
+        const w = ws[i];
+        if ((b.cds[i] -= dt) > 0) continue;
+        if (w.beam) { beam(b, w, i); continue; }
+        const t = pickTarget(b, w);
+        if (!t) { b.cds[i] = 0.2; continue; }  // nothing in range: look again soon
+        b.aim = Math.atan2(t.y - b.y, t.x - b.x);
+        b.cds[i] = w.cooldown;
+        fire(b, w, t);
+      }
     }
     for (const s of G.shots) {
       if (s.rolling) { rollStep(s, dt); continue; }

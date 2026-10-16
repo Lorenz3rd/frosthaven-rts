@@ -170,14 +170,14 @@
     return K.placeInSlot(gr, slot, base);
   };
 
-  // Barracks: four factory floors.
-  function factory(gr, team, w = 120, d = 170, h = 70) {
-    add(gr, g.box(w + 12, 10, d + 12), plate(), 0, 5, 0);
-    add(gr, g.box(w, h, d), K.metal(0x5a6068, 0.5), 0, 10 + h / 2, 0);
-    for (let i = 0; i < 4; i++) add(gr, g.box(w + 2, 4, 4), brass(), 0, 14 + i * h / 3.2, d / 2 + 1);
-    for (let i = 0; i < 6; i++) add(gr, g.box(4, 12, 16), core(), w / 2 + 1, h * 0.7, -d / 2 + 20 + i * (d - 40) / 5, { shadow: false });
+  // Barracks: factory floors. x shifts a narrower shop toward the back.
+  function factory(gr, team, w = 120, d = 170, h = 70, x = 0) {
+    add(gr, g.box(w + 12, 10, d + 12), plate(), x, 5, 0);
+    add(gr, g.box(w, h, d), K.metal(0x5a6068, 0.5), x, 10 + h / 2, 0);
+    for (let i = 0; i < 4; i++) add(gr, g.box(w + 2, 4, 4), brass(), x, 14 + i * h / 3.2, d / 2 + 1);
+    for (let i = 0; i < 6; i++) add(gr, g.box(4, 12, 16), core(), x + w / 2 + 1, h * 0.7, -d / 2 + 20 + i * (d - 40) / 5, { shadow: false });
     // Saw-tooth factory roof.
-    for (let i = 0; i < 4; i++) add(gr, g.cyl(20, 20, w, 3), darkM(), 0, 10 + h + 10, -d / 2 + 22 + i * (d - 44) / 3, { rz: PI / 2 });
+    for (let i = 0; i < 4; i++) add(gr, g.cyl(20, 20, w, 3), darkM(), x, 10 + h + 10, -d / 2 + 22 + i * (d - 44) / 3, { rz: PI / 2 });
   }
   B.barracks = (slot, base, team) => {   // Assembly Line: a robotic arm assembles automatons on a conveyor
     const gr = new THREE.Group();
@@ -247,6 +247,166 @@
     for (let i = 0; i < 4; i++) add(gr, g.cyl(2, 2, 60, 6), steel(), 40, 50, -45 + i * 30, { rz: 0.4 });   // racked long rifles
     panel(gr, team, 56, 40, 50, 30, 20);
     gr.userData = { tick(b, time) { dish.rotation.y = time * 0.8; } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksSpear = (slot, base, team) => {   // Rod Mill: rollers drawing steel rods out of the shop, racks of arc-tipped pikes
+    const gr = new THREE.Group();
+    factory(gr, team, 80, 170, 64, -30);
+    for (const z of [-22, 22]) add(gr, g.box(30, 54, 4), darkM(), 40, 27, z);
+    const rollers = [30, 47].map(y => {
+      const r = pivot(gr, 40, y, 0);
+      add(r, g.cyl(8, 8, 40, 12), steel(), 0, 0, 0, { rx: PI / 2 });
+      for (let i = 0; i < 4; i++) add(r, g.box(2, 2, 40), brass(), Math.cos(i * PI / 2) * 8, Math.sin(i * PI / 2) * 8, 0);
+      return r;
+    });
+    for (const z of [-6, 0, 6]) add(gr, g.cyl(1.2, 1.2, 90, 6), steel(), 50, 38.5, z, { rz: PI / 2 });
+    for (const z of [-58, 58]) {
+      add(gr, g.box(8, 6, 50), darkM(), 62, 30, z);
+      add(gr, g.box(8, 6, 50), darkM(), 62, 90, z);
+      for (let i = 0; i < 6; i++) {
+        add(gr, g.cyl(1.3, 1.3, 130, 6), steel(), 66, 75, z - 20 + i * 8, { rz: 0.08 });
+        add(gr, g.cone(2.6, 12, 4), core(), 60.6, 146, z - 20 + i * 8, { rz: 0.08, shadow: false });
+      }
+    }
+    lamp(gr, 40, 62, 0, C.warn, 30);
+    panel(gr, team, 11, 40, 50, 30, 26);
+    const smoke = stack(gr, -50, -50, 130, 8);
+    gr.userData = {
+      tick(b, time) {
+        rollers[0].rotation.z = time * 2; rollers[1].rotation.z = -time * 2;
+        smoke.position.y = 144 + Math.sin(time) * 4;
+      }
+    };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksElite = (slot, base, team) => {   // Duel Cage: a domed cage of steel ribs where a duelist frame turns on a test plate
+    const gr = new THREE.Group();
+    factory(gr, team, 70, 170, 84, -45);
+    add(gr, g.cyl(44, 46, 6, 20), plate(), 40, 3, 0);
+    for (let i = 0; i < 4; i++) add(gr, g.torus(42, 2, 4, 16, PI), steel(), 40, 6, 0, { ry: i * PI / 4 });
+    add(gr, g.sph(5, 8, 6), core(), 40, 48, 0, { shadow: false });
+    const glow = K.addGlow(gr, C.glow, 70, 40, 48, 0, 0.7);
+    const plateP = pivot(gr, 40, 7, 0);
+    add(plateP, g.cyl(22, 22, 4, 20), brass(), 0, 0, 0);
+    for (const z of [-4, 4]) add(plateP, g.cyl(2, 2, 16, 6), steel(), 0, 10, z);
+    add(plateP, g.box(10, 18, 14), plate(), 0, 26, 0);
+    add(plateP, g.box(3, 12, 6), K.m(K.teamHex(team)), 5.5, 28, 0);
+    add(plateP, g.sph(5, 8, 6), steel(), 0, 40, 0);
+    add(plateP, g.box(2, 2, 6), core(), 4.5, 40, 0, { shadow: false });
+    add(plateP, g.box(2, 2, 34), core(), 8, 30, 14, { rx: -0.6, shadow: false });
+    for (const z of [-44, 44]) lamp(gr, 40, 8, z, C.glow, 26);
+    panel(gr, team, -9, 50, 40, 30, 30);
+    antenna(gr, team, -60, 94, -50, 50);
+    gr.userData = { tick(b, time) { plateP.rotation.y = time * 0.7; glow.material.opacity = 0.55 + Math.sin(time * 6) * 0.2; } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksCaster = (slot, base, team) => {   // Tesla Spire: a copper-wound coil tower throwing arcs, grounding pylons around it
+    const gr = new THREE.Group();
+    factory(gr, team, 70, 170, 50, -45);
+    add(gr, g.cyl(26, 32, 16, 10), darkM(), 30, 8, 0);
+    add(gr, g.cyl(8, 10, 150, 10), darkM(), 30, 91, 0);
+    for (let i = 0; i < 14; i++) add(gr, g.torus(12, 2.4, 4, 14), copper(), 30, 30 + i * 8, 0, { rx: PI / 2 });
+    add(gr, g.torus(24, 8, 8, 20), steel(), 30, 174, 0, { rx: PI / 2 });
+    add(gr, g.sph(10, 10, 8), core(), 30, 184, 0, { shadow: false });
+    const halo = K.addGlow(gr, C.glow, 130, 30, 184, 0, 0.6);
+    const arcs = pivot(gr, 30, 180, 0);
+    const bolts = [0, 1, 2, 3].map(i => add(arcs, g.box(56, 1.6, 1.6), core(), Math.cos(i * PI / 2) * 30, -8 - i * 4, Math.sin(i * PI / 2) * 30, { ry: -i * PI / 2, rz: -0.4, shadow: false }));
+    for (const a of [-1.1, 0, 1.1]) {
+      const x = 30 + Math.cos(a) * 54, z = Math.sin(a) * 54;
+      add(gr, g.cyl(3, 4, 40, 8), darkM(), x, 20, z);
+      add(gr, g.sph(6, 8, 6), copper(), x, 44, z);
+      lamp(gr, x, 52, z, C.glow, 24);
+    }
+    panel(gr, team, -9, 34, 50, 30, 22);
+    antenna(gr, team, -60, 60, -50, 50);
+    gr.userData = {
+      tick(b, time) {
+        arcs.rotation.y = Math.floor(time * 6) * 1.3;
+        bolts.forEach((m, i) => { m.visible = Math.sin(time * 9 + i * 2.3) > 0; });
+        halo.material.opacity = 0.5 + Math.sin(time * 11) * 0.2;
+      }
+    };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksCreature = (slot, base, team) => {   // Hound Kennels: rows of steel cages, clockwork hounds blinking inside
+    const gr = new THREE.Group();
+    factory(gr, team, 70, 170, 56, -45);
+    const eyes = [];
+    for (const x of [20, 56]) for (const z of [-56, 0, 56]) {
+      add(gr, g.box(30, 4, 36), plate(), x, 2, z);
+      add(gr, g.box(32, 3, 38), darkM(), x, 34, z);
+      for (const [dx, dz] of [[-14, -17], [-14, 17], [14, -17], [14, 17]]) add(gr, g.cyl(1.6, 1.6, 30, 6), steel(), x + dx, 19, z + dz);
+      for (let i = 0; i < 4; i++) add(gr, g.cyl(0.8, 0.8, 30, 4), steel(), x + 14, 19, z - 10.5 + i * 7, { shadow: false });
+      add(gr, g.box(18, 10, 10), plate(), x - 2, 12, z);
+      add(gr, g.box(8, 8, 8), plate(), x + 8, 18, z);
+      eyes.push(add(gr, g.box(2, 2, 6), core(), x + 12.2, 19, z, { shadow: false }));
+    }
+    panel(gr, team, -9, 36, 0, 40, 22);
+    antenna(gr, team, -60, 66, 50, 50);
+    gr.userData = { tick(b, time) { eyes.forEach((e, i) => { e.visible = Math.sin(time * 1.7 + i * 2.1) > -0.85; }); } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksMounted = (slot, base, team) => {   // Charger Roundhouse: a half-round engine shed, a turntable turning a mechanical steed
+    const gr = new THREE.Group();
+    add(gr, g.box(92, 10, 176), plate(), -38, 5, 0);
+    add(gr, new THREE.CylinderGeometry(78, 78, 60, 16, 1, false, PI, PI), K.metal(0x5a6068, 0.5), 0, 40, 0);
+    add(gr, g.box(3, 60, 156), K.metal(0x5a6068, 0.5), -1, 40, 0);   // the flat front the bays open through
+    add(gr, g.box(4, 4, 158), brass(), 0, 66, 0);
+    add(gr, new THREE.CylinderGeometry(82, 82, 6, 16, 1, false, PI, PI), darkM(), 0, 73, 0);
+    for (const z of [-50, 0, 50]) {
+      add(gr, g.box(3, 42, 34), K.m(0x14161a), 1, 31, z);
+      add(gr, g.box(4, 4, 40), brass(), 1.5, 54, z);
+      for (const dz of [-6, 6]) add(gr, g.box(40, 2, 2), steel(), 22, 11, z * 0.6 + dz, { ry: Math.atan2(z * 0.4, 40) });
+    }
+    add(gr, g.cyl(36, 36, 4, 24), darkM(), 46, 2, 0);
+    const table = pivot(gr, 46, 6, 0);
+    add(table, g.cyl(32, 32, 4, 24), brass(), 0, 0, 0);
+    for (const z of [-6, 6]) add(table, g.box(64, 2, 2), steel(), 0, 3, z);
+    for (const [dx, dz] of [[-10, -5], [-10, 5], [10, -5], [10, 5]]) add(table, g.cyl(2, 1.6, 22, 6), steel(), dx, 13, dz);
+    add(table, g.box(30, 14, 12), plate(), 0, 30, 0);
+    add(table, g.cyl(6, 6, 20, 10), brass(), 0, 30, 0, { rz: PI / 2 });
+    add(table, g.box(8, 18, 8), plate(), 16, 42, 0, { rz: -0.4 });
+    add(table, g.box(14, 7, 7), plate(), 24, 50, 0, { rz: 0.3 });
+    add(table, g.box(2, 2, 7.4), core(), 30, 51, 0, { shadow: false });
+    add(table, g.cyl(2.5, 2.5, 12, 8), darkM(), -10, 42, 0);
+    panel(gr, team, 2, 60, 25, 16, 10);
+    const smoke = stack(gr, -50, -40, 120, 8);
+    antenna(gr, team, -40, 76, 40, 50);
+    gr.userData = { tick(b, time) { table.rotation.y = time * 0.4; smoke.position.y = 134 + Math.sin(time) * 4; } };
+    return K.placeInSlot(gr, slot, base);
+  };
+  B.barracksWarMachine = (slot, base, team) => {   // Crawler Hangar: an arched hangar where a gantry works over a half-built siege crawler
+    const gr = new THREE.Group();
+    add(gr, g.box(164, 8, 164), plate(), 0, 4, 0);
+    const shell = K.m(0x5a6068, { metalness: 0.65, roughness: 0.5, side: THREE.DoubleSide });
+    add(gr, new THREE.CylinderGeometry(70, 70, 150, 16, 1, true, -PI / 2, PI).rotateX(-PI / 2).rotateY(PI / 2), shell, -5, 8, 0);
+    add(gr, new THREE.CircleGeometry(70, 16, 0, PI), shell, -80, 8, 0, { ry: PI / 2 });
+    for (let i = 0; i < 6; i++) add(gr, g.torus(71, 2.5, 4, 20, PI), brass(), -75 + i * 30, 8, 0, { ry: PI / 2 });
+    // The crawler: treads, hull, turret and arc-cannon.
+    for (const z of [-24, 24]) {
+      add(gr, g.box(80, 16, 14), darkM(), -5, 16, z);
+      for (let i = 0; i < 8; i++) add(gr, g.box(3, 17, 15), steel(), -40 + i * 10, 16, z);
+    }
+    add(gr, g.box(70, 20, 40), plate(), -5, 34, 0);
+    add(gr, g.cyl(14, 16, 10, 12), plate(), -5, 49, 0);
+    add(gr, g.cyl(3, 4, 50, 8), steel(), 22, 50, 0, { rz: PI / 2 });
+    add(gr, g.sph(4, 8, 6), core(), 48, 50, 0, { shadow: false });
+    for (const z of [-26, 26]) add(gr, g.box(2, 10, 14), K.m(C.warn), 30.5, 34, z * 0.6);
+    // Gantry crane running along the hangar.
+    const trolley = pivot(gr, -5, 64, 0);
+    add(trolley, g.box(10, 6, 80), K.m(C.warn), 0, 0, 0);
+    add(trolley, g.cyl(0.6, 0.6, 18, 4), darkM(), 0, -9, 0);
+    add(trolley, g.box(6, 4, 6), steel(), 0, -19, 0);
+    const spark = K.addGlow(trolley, 0xffd080, 36, 0, -22, 0, 0.8);
+    for (const z of [-60, 60]) lamp(gr, 72, 30, z, C.warn, 34);
+    panel(gr, team, 70, 66, 0, 36, 14, 0);
+    antenna(gr, team, -40, 76, 0, 60);
+    gr.userData = {
+      tick(b, time) {
+        trolley.position.x = -5 + Math.sin(time * 0.5) * 40;
+        spark.material.opacity = Math.random() < 0.6 ? 0.9 : 0.2;
+      }
+    };
     return K.placeInSlot(gr, slot, base);
   };
 
