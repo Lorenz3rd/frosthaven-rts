@@ -1,6 +1,8 @@
 // Network settings: how players' PCs find a path to the host (see net.js). Safe to edit.
 //
-// Players on the same Wi-Fi connect straight across it. Players on different networks (different homes,
+// Players on the same Wi-Fi connect straight across it, as long as Windows has that Wi-Fi set to a
+// Private network on both PCs (Public blocks the local address lookup browsers use) and the Wi-Fi
+// doesn't keep devices apart (guest, school and work networks often do). Players on different networks (different homes,
 // a phone hotspot...) usually connect straight over the internet too: the STUN servers below tell each
 // PC its public address so the two can get through their routers. Some networks (strict school or work
 // Wi-Fi, some mobile carriers, a few home routers) block that; those players need a TURN relay server,

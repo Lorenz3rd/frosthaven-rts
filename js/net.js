@@ -98,6 +98,18 @@
     } catch (e) { /* closed meanwhile */ }
   }
 
+  // A join that found the room but got no path: log the addresses each side offered (read from the
+  // session descriptions, which collect every trickled candidate and stay readable after PeerJS closes
+  // the connection). 'host' entries are the PCs' own addresses (Chrome hides them as *.local names),
+  // 'srflx' their public ones, 'relay' TURN.
+  function logCandidates(pc) {
+    try {
+      const cands = desc => ((desc && desc.sdp) || '').split(/\r?\n/).filter(l => l.startsWith('a=candidate:'))
+        .map(l => { const f = l.split(' '); return `${f[7]} ${f[4]}:${f[5]} ${f[2]}`; });
+      console.warn('[net] could not connect to the host', { local: cands(pc.localDescription), remote: cands(pc.remoteDescription), ice: pc.iceConnectionState });
+    } catch (e) { /* nothing to show */ }
+  }
+
   function wrap(conn) {
     const link = { conn, last: performance.now(), parts: {}, onMessage: null, player: null, ready: false, needFull: false };
     link.sendRaw = s => {
@@ -324,11 +336,14 @@
       let settled = false;
       const fail = msg => { if (settled) return; settled = true; clearTimeout(timer); shutdown(); reject(msg); };
       // Found the room but no path to the host's PC: a network on one side blocks the connection.
-      const blocked = 'Found the room, but couldn’t connect to the host’s PC: one of your networks is blocking the connection. Try again; if it keeps failing, add a TURN relay server in js/netconfig.js (see the notes there) or try another network.';
+      const blocked = 'Found the room, but couldn’t connect to the host’s PC: a network or firewall is blocking the connection. '
+        + 'On the same Wi-Fi: on both PCs open Settings › Network & internet › Wi-Fi › this network and set "Network profile type" to Private (Public blocks it), and let your browser through Windows Firewall on private networks; guest, school and work Wi-Fi often keep devices apart, so try a phone hotspot. '
+        + 'Otherwise, add a TURN relay server in js/netconfig.js (see the notes there) or try another network.';
       // The host has answered once its reply (remote description) is in: from then on, a failure is the path.
-      let conn = null;
-      const found = () => !!(conn && conn.peerConnection && conn.peerConnection.remoteDescription);
-      const timer = setTimeout(() => fail(found() ? blocked : `Couldn’t reach the room "${room}". Check the internet connection and that the host still has the room open.`), 20000);
+      let conn = null, pc = null;
+      const found = () => !!(pc && pc.remoteDescription);
+      const failBlocked = () => { if (settled) return; if (pc) logCandidates(pc); fail(blocked); };
+      const timer = setTimeout(() => found() ? failBlocked() : fail(`Couldn’t reach the room "${room}". Check the internet connection and that the host still has the room open.`), 20000);
       peer = new Peer(peerOpts());
       peer.on('error', e => {
         console.warn('[net] client error', e.type, e);
@@ -337,10 +352,11 @@
       });
       peer.on('open', () => {
         conn = peer.connect(PREFIX + id, { serialization: 'raw', reliable: true });
+        pc = conn.peerConnection;   // kept: PeerJS drops its reference when the connection closes
         const link = wrap(conn);
         hostLink = link;
-        conn.on('iceStateChanged', st => { if (st === 'failed' && !settled) fail(blocked); });
-        conn.on('error', e => { if (e && e.type === 'negotiation-failed') fail(blocked); });
+        conn.on('iceStateChanged', st => { if (st === 'failed') failBlocked(); });
+        conn.on('error', e => { if (e && e.type === 'negotiation-failed') failBlocked(); });
         conn.on('open', () => link.send({ t: 'hello', id: net.myToken(), name, ver: fingerprint() }));
         conn.on('close', () => { if (hostLink === link) hostGone(settled ? 'The connection to the host was lost.' : null); if (!settled) fail('The host closed the connection.'); });
         let pinged = 0;
