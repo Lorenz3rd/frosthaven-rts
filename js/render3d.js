@@ -2137,8 +2137,49 @@
     return c;
   }
 
+  // Primitives that differ only in size (a 34x14x25 box, a 1x20x6 one...) all become one unit-size
+  // geometry, the size going into each instance's matrix: one batch for every box of a look instead of
+  // one per size. (The instancing shader scales normals properly for this.) Each geometry is checked
+  // vertex by vertex against its unit stand-in, so one that was moved or bent after it was made keeps
+  // its own batch.
+  const UNIT = {
+    BoxGeometry: p => [[1, 1, 1, p.widthSegments, p.heightSegments, p.depthSegments], p.width, p.height, p.depth],
+    PlaneGeometry: p => [[1, 1, p.widthSegments, p.heightSegments], p.width, p.height, 1],
+    SphereGeometry: p => [[1, p.widthSegments, p.heightSegments, p.phiStart, p.phiLength, p.thetaStart, p.thetaLength], p.radius, p.radius, p.radius],
+    IcosahedronGeometry: p => [[1, p.detail], p.radius, p.radius, p.radius],
+    OctahedronGeometry: p => [[1, p.detail], p.radius, p.radius, p.radius],
+    DodecahedronGeometry: p => [[1, p.detail], p.radius, p.radius, p.radius],
+    TetrahedronGeometry: p => [[1, p.detail], p.radius, p.radius, p.radius],
+    ConeGeometry: p => [[1, 1, p.radialSegments, p.heightSegments, p.openEnded, p.thetaStart, p.thetaLength], p.radius, p.height, p.radius],
+    CylinderGeometry: p => p.radiusBottom > 0 &&
+      [[p.radiusTop / p.radiusBottom, 1, 1, p.radialSegments, p.heightSegments, p.openEnded, p.thetaStart, p.thetaLength], p.radiusBottom, p.height, p.radiusBottom],
+    TorusGeometry: p => [[1, p.tube / p.radius, p.radialSegments, p.tubularSegments, p.arc], p.radius, p.radius, p.radius]
+  };
+  const unitOf = new WeakMap(), unitGeos = new Map();
+  function unitGeo(geo) {
+    let u = unitOf.get(geo);
+    if (u === undefined) { u = makeUnit(geo); unitOf.set(geo, u); }
+    return u;
+  }
+  function makeUnit(geo) {
+    const spec = geo.parameters && UNIT[geo.type] && UNIT[geo.type](geo.parameters);
+    if (!spec) return null;
+    const [args, sx, sy, sz] = spec;
+    if (!(sx > 1e-6 && sy > 1e-6 && sz > 1e-6)) return null;
+    const key = geo.type + ':' + args.join();
+    let unit = unitGeos.get(key);
+    if (!unit) unitGeos.set(key, unit = new THREE[geo.type](...args));
+    const A = geo.attributes.position, B = unit.attributes.position;
+    if (Object.keys(geo.attributes).sort().join() !== Object.keys(unit.attributes).sort().join() || A.count !== B.count ||
+      !geo.index !== !unit.index || (geo.index && geo.index.count !== unit.index.count)) return null;
+    const a = A.array, b = B.array, s = [sx, sy, sz];
+    for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i] * s[i % 3]) > 1e-3 * (1 + Math.abs(a[i]))) return null;
+    return { geo: canonGeo(unit), sx, sy, sz };
+  }
+
   function addInstance(o, mat) {
-    const geo = canonGeo(o.geometry);
+    const u = unitGeo(o.geometry);
+    const geo = u ? u.geo : canonGeo(o.geometry);
     let byMat = batches.get(geo);
     if (!byMat) batches.set(geo, byMat = new Map());
     const k = mat.id * 4 + (o.castShadow ? 2 : 0) + (o.receiveShadow ? 1 : 0);
@@ -2154,7 +2195,9 @@
       scene.add(im);
       b.im = im; b.cap = cap;
     }
-    b.im.instanceMatrix.array.set(o.matrixWorld.elements, b.n * 16);
+    const arr = b.im.instanceMatrix.array, i = b.n * 16;
+    arr.set(o.matrixWorld.elements, i);
+    if (u) for (let k = 0; k < 4; k++) { arr[i + k] *= u.sx; arr[i + 4 + k] *= u.sy; arr[i + 8 + k] *= u.sz; }
     b.n++;
   }
 

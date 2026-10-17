@@ -6,7 +6,8 @@
   G.BUILDING_SALVAGE = 0.3;   // share of a building's cost left behind when it's destroyed
   G.PASSIVE_INCOME = 1;       // gold a second every hero earns, fallen or not
   const PICKUP_REACH = 22;    // edge-to-edge distance at which a hero scoops up a pile
-  const COIN_R = 10;          // pile radius at the smallest size
+  const COIN_LIFETIME = 10;   // seconds an unclaimed pile lies on the ground before it despawns
+  const COIN_R = 10;         // pile radius at the smallest size
 
   G.coins = [];
 
@@ -28,6 +29,7 @@
     const heroes = G.entities.filter(h => h instanceof G.Hero && !h.dead);
     for (const c of G.coins) {
       c.t += dt;
+      if (c.t >= COIN_LIFETIME) { c.dead = true; continue; }
       for (const h of heroes) {
         if (G.dist(h.x, h.y, c.x, c.y) > h.r + c.r + PICKUP_REACH) continue;
         const amount = Math.round(c.amount * G.bonusOf(h.team).gold);

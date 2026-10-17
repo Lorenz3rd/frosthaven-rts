@@ -291,7 +291,7 @@
     else if (hostLink) hostLink.send(Object.assign({ t: 'pick' }, o));
   };
   net.setRace = function (team, raceId) {
-    if (net.role !== 'host' || net.lobby.started) return;
+    if (net.role !== 'host' || net.lobby.started || !G.RACES.some(r => r.id === raceId)) return;
     net.lobby.races[team] = raceId;
     lobbyChanged();
   };
@@ -343,7 +343,11 @@
         conn.on('error', e => { if (e && e.type === 'negotiation-failed') fail(blocked); });
         conn.on('open', () => link.send({ t: 'hello', id: net.myToken(), name, ver: fingerprint() }));
         conn.on('close', () => { if (hostLink === link) hostGone(settled ? 'The connection to the host was lost.' : null); if (!settled) fail('The host closed the connection.'); });
+        let pinged = 0;
         link.onMessage = m => {
+          // Keep-alive from the host's own traffic too: timers in a long-hidden tab may fire only once a minute.
+          const now = performance.now();
+          if (settled && now - pinged > 1000) { pinged = now; link.send({ t: 'ping' }); }
           if (m.t === 'reject') { fail(m.reason); return; }
           if (m.t === 'welcome') {
             settled = true; clearTimeout(timer);
@@ -808,10 +812,13 @@
     G.coins = [...mirrors.C.values()];
     G.fx = [...mirrors.F.values()];
     if (m.bt) m.bt.forEach((t, i) => { if (G.bases[i]) G.bases[i].team = t; });
+    // A hidden tab draws no frames, so nothing would age these out: skip them (they'd be long gone anyway).
+    if (document.hidden) return endCheck(m);
     for (const r of m.pa || []) G.particles.push({ x: r[0], y: r[1], h: r[2] === null ? undefined : r[2], vx: r[3], vy: r[4], life: r[5], color: r[6], size: r[7], t: r[8] });
     for (const r of m.fl || []) G.floaters.push({ x: r[0], y: r[1], text: r[2], color: r[3], t: r[4] });
-    if (m.w !== null && m.w !== undefined && G.winner === null && G.endGame) G.endGame(m.w);
+    endCheck(m);
   }
+  function endCheck(m) { if (m.w !== null && m.w !== undefined && G.winner === null && G.endGame) G.endGame(m.w); }
 
   // Called by G.startGame on a client after the world is laid out: applies the first snapshot and
   // returns the player's own hero.

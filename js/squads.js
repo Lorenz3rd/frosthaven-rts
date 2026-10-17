@@ -282,8 +282,13 @@
   G.Soldier = Soldier;
 
   // Everything a squad of `team` may attack: heroes, soldiers, buildings. Never neutral beasts.
+  // While squads update, each team's list is built once per step and shared (see G.updateSquads);
+  // callers skip the ones that fall meanwhile, and none may change the list.
+  let hostileCache = null;
   G.hostilesOf = function (team) {
+    if (hostileCache && hostileCache[team]) return hostileCache[team];
     const out = [];
+    if (hostileCache) hostileCache[team] = out;
     for (const e of G.entities)
       if (!e.dead && e.team !== team && e.team !== G.TEAM.NEUTRAL && !e.invisible && !(G.dev && e instanceof G.Hero)) out.push(e);
     for (const b of G.buildingList())
@@ -562,7 +567,13 @@
 
   // Officer sidearm: fire at the nearest hostile already in range, without chasing it.
   function officerShoot(s) {
-    const foe = nearest(G.hostilesOf(s.team).filter(f => G.canShoot(s.x, s.y, f)), s.x, s.y, s.attackRange + s.r);
+    // Range first: the storm-field test is the costly part, and only a few hostiles are ever in reach.
+    let foe = null, bd = s.attackRange + s.r;
+    for (const f of G.hostilesOf(s.team)) {
+      if (f.dead) continue;
+      const d = G.dist(s.x, s.y, f.x, f.y) - (f.r || 0);
+      if (d < bd && G.canShoot(s.x, s.y, f)) { bd = d; foe = f; }
+    }
     if (!foe) return;
     const facing = s.facing;
     s.strike(foe);
@@ -604,14 +615,36 @@
     // Every follower gets a place in one block about the hero, nearest soldiers first.
     const list = hero.followers.filter(s => s.cmd === 'follow');
     list.sort((a, b) => G.dist(a.x, a.y, hero.x, hero.y) - G.dist(b.x, b.y, hero.x, hero.y));
-    const cols = Math.min(FOLLOW_COLS, list.length), rows = Math.ceil(list.length / cols);
-    list.forEach((s, i) => {
-      const col = i % cols, row = Math.floor(i / cols);
-      s.followOffset = { x: (col - (cols - 1) / 2) * FOLLOW_SPACING, y: (row - (rows - 1) / 2) * FOLLOW_SPACING };
-    });
+    followSlots(hero, list);
     shout(hero, 'Follow');
     return true;
   };
+
+  // Rows of up to FOLLOW_COLS, spaced for the widest body in each row (like formUp), centered on the
+  // hero. A row level with the hero parts around him: he holds his ground, so a soldier given a spot
+  // inside him would be shoved off it and walk back every step.
+  function followSlots(hero, list) {
+    const rows = [];
+    for (let i = 0; i < list.length; i += FOLLOW_COLS) rows.push(list.slice(i, i + FOLLOW_COLS));
+    const gaps = rows.map(row => Math.max(FOLLOW_SPACING, Math.max(...row.map(s => s.r)) * 2 + 6));
+    const ys = [];
+    let y = 0;
+    rows.forEach((row, i) => { if (i) y += (gaps[i - 1] + gaps[i]) / 2; ys.push(y); });
+    rows.forEach((row, i) => {
+      const oy = ys[i] - y / 2, gap = gaps[i], n = row.length;
+      const clear = hero.r + (gap - 6) / 2 + 4;   // center-to-center room past the hero
+      const parts = Math.abs(oy) < clear;
+      row.forEach((s, j) => {
+        let ox = (j - (n - 1) / 2) * gap;
+        if (parts) {
+          // Alternate right and left of the hero, outward from his edge.
+          const k = Math.floor(j / 2);
+          ox = (j % 2 ? -1 : 1) * (Math.sqrt(Math.max(0, clear * clear - oy * oy)) + k * gap);
+        }
+        s.followOffset = { x: ox, y: oy };
+      });
+    });
+  }
 
   // 1-4: an order for every soldier under the hero's command. False when there is nobody to give it to.
   G.commandOrder = function (hero, order) {
@@ -718,7 +751,10 @@
   const ORDERS = {
     follow(s, hero, ctx) {
       // Following comes first: keep walking to the spot in line with the hero, never faster than baseline.
-      s.walk(hero.x + s.followOffset.x, hero.y + s.followOffset.y, 2, ctx.dt);
+      // A spot inside a rock or building can't be reached: aim for the nearest free place by it.
+      const p = { x: hero.x + s.followOffset.x, y: hero.y + s.followOffset.y, r: s.r, team: s.team };
+      G.map.resolve(p);
+      s.walk(p.x, p.y, 2, ctx.dt);
       fireAtWill(s, ctx);
     },
     guard(s, hero, ctx) {
@@ -808,6 +844,7 @@
       G.squads.push(sq);
       G.burst(b.x, b.y, '#ffffff', 20, 160);
     }
+    hostileCache = {};
     for (const sq of G.squads) {
       if (sq.summoner && (sq.lifetime -= dt) <= 0) {
         for (const s of sq.alive) { s.hp = 0; s.die(); }
@@ -815,6 +852,7 @@
       }
       sq.update(dt);
     }
+    hostileCache = null;
     // Bodies don't overlap: soldiers push apart from each other (both teams) and from heroes/beasts,
     // then out of rocks and buildings. Sweep along x: with bodies sorted by x, each one only meets the
     // few that follow it within reach, instead of every other body on the map.

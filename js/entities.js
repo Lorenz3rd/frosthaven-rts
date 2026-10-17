@@ -117,7 +117,7 @@
     constructor(x, y, def, team = G.TEAM.PLAYER) {
       super(x, y, def.r || 18, def.hp, team);
       this.def = def;
-      this.speed = def.speed;
+      this.speed = def.speed * 1.3;   // all heroes move 30% faster than their listed base speed
       this.hpRegen = def.hpRegen || 5;
       this.target = null;
       this.facing = 0;
@@ -152,6 +152,15 @@
       const dealt = super.takeDamage(amount, src);
       if (src && src.hero) G.noteDamage(src.hero, this, dealt);
       return dealt;
+    }
+    die(src) {
+      if (!this.dead) {
+        // Death costs 40% of the purse; a quarter of that (10% of the total) is left as loot.
+        const lost = Math.floor(this.gold * 0.4), drop = Math.floor(this.gold * 0.1);
+        this.gold -= lost;
+        G.dropCoins(this.x, this.y, drop);
+      }
+      super.die(src);
     }
     respawn(x, y) {
       this.dead = false; this.hp = this.maxHp;

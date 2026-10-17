@@ -6,10 +6,11 @@
   const SLOT_R = 32 * SCALE;       // clickable/visual radius of a slot
   const SLOT_COUNT = 6;
   const BUILDING_HP = 1500;
+  const BARRACKS_HP = 1000;        // troop barracks (not the Allies buildings)
   // Defense weapons, shared by the towers and the Fortress (which carries several at once).
-  const DIGIN_WEAPON = { range: G.m(12), minRange: 0, cooldown: 0.3, damage: 30, targets: 'all', pick: 'nearest', shot: 'arrow', muzzle: 40, speed: 900 };
-  const SUPPORT_WEAPON = { range: G.m(33), minRange: 0, cooldown: 1.2, damage: 90, targets: 'units', pick: 'nearest', shot: 'bolt', muzzle: 230, speed: 1300 };
-  const SIEGE_WEAPON = { range: G.m(41), minRange: G.m(12), cooldown: 6.0, damage: 250, bldgMul: 2, targets: 'all', pick: 'buildings',
+  const DIGIN_WEAPON = { range: G.m(12), minRange: 0, cooldown: 0.3, damage: 20, targets: 'all', pick: 'nearest', shot: 'arrow', muzzle: 40, speed: 900 };
+  const SUPPORT_WEAPON = { range: G.m(33), minRange: 0, cooldown: 1.6, damage: 90, targets: 'units', pick: 'nearest', shot: 'bolt', muzzle: 230, speed: 1300 };
+  const SIEGE_WEAPON = { range: G.m(41), minRange: G.m(12), cooldown: 8.0, damage: 250, bldgMul: 2, targets: 'all', pick: 'buildings',
     roll: { distance: 380, speed: 420, falloff: 0.75, minDamage: 10, radius: 45 }, shot: 'boulder', muzzle: 70, speed: 700 };
   // Wall: 6 segments on a ring just inside the base edge, one in front of each slot. Each segment is
   // made of posts (collision circles, see G.buildingSolids); the posts in its middle form a gate that
@@ -45,27 +46,27 @@
     wall: { name: 'Wall', cost: 250, wall: true, segments: SLOT_COUNT },
     wallSegment: { name: 'Wall', cost: 250 / SLOT_COUNT, r: 30, hp: 750, segment: true, menu: false },
     energy: { name: 'Energy Weapon', cost: 300, r: 22 * SCALE,
-      weapon: { range: G.m(15), minRange: 0, cooldown: 0.5, damage: 3, ramp: 2, maxDamage: 96, targets: 'units', pick: 'maxHp', beam: true, muzzle: 250 } },
+      weapon: { range: G.m(12), minRange: 0, cooldown: 0.5, damage: 3, ramp: 2, maxDamage: 96, targets: 'units', pick: 'maxHp', beam: true, muzzle: 250 } },
     rock: { name: 'Rock Launcher', cost: 175, r: 26 * SCALE,
-      weapon: { range: G.m(20), minRange: 0, cooldown: 3.0, damage: 50, splash: G.m(2), targets: 'all', pick: 'nearest', shot: 'boulder', muzzle: 90, speed: 650 } },
+      weapon: { range: G.m(20), minRange: 0, cooldown: 5.0, damage: 50, splash: G.m(1), targets: 'all', pick: 'nearest', shot: 'boulder', muzzle: 90, speed: 650 } },
     // Fortress: two dig-ins, a support tower and a siege machine in one spot.
-    fortress: { name: 'Fortress', cost: 700, r: 28 * SCALE, hp: 2500,
+    fortress: { name: 'Fortress', cost: 800, r: 28 * SCALE, hp: 2500,
       weapons: [DIGIN_WEAPON, Object.assign({}, DIGIN_WEAPON, { muzzle: 120 }), Object.assign({}, SUPPORT_WEAPON, { muzzle: 260 }), SIEGE_WEAPON] },
     // Storm Tower: no weapon. Its field covers the whole base: ranged attacks from outside can't hit
     // anything of its side inside the base (see G.canShoot). Movement and shots out are unaffected.
     storm: { name: 'Storm Tower', cost: 225, r: 22 * SCALE, field: true },
     // Barracks: `squad` names the unit kind it spawns (see SQUAD_KINDS in squads.js). Grouped in the
-    // build menu as Infantry, Ranged and Mobile.
-    barracks: { name: 'Grunt Barracks', cost: 75, r: 26 * SCALE, squad: 'infantry' },
-    barracksSpear: { name: 'Spearmen Barracks', cost: 100, r: 26 * SCALE, squad: 'spearman' },
-    barracksElite: { name: 'Elite Barracks', cost: 150, r: 26 * SCALE, squad: 'elite' },
-    barracksArmored: { name: 'Armored Barracks', cost: 175, r: 26 * SCALE, squad: 'armored' },
-    barracksShort: { name: 'Skirmisher Barracks', cost: 125, r: 26 * SCALE, squad: 'short' },
-    barracksLong: { name: 'Marksmen Barracks', cost: 150, r: 26 * SCALE, squad: 'long' },
-    barracksCaster: { name: 'Caster Sanctum', cost: 200, r: 26 * SCALE, squad: 'caster' },
-    barracksCreature: { name: 'Creature Pens', cost: 125, r: 26 * SCALE, squad: 'creature' },
-    barracksMounted: { name: 'Stables', cost: 175, r: 26 * SCALE, squad: 'mounted' },
-    barracksWarMachine: { name: 'Siege Works', cost: 400, r: 26 * SCALE, squad: 'warMachine' },
+    // build menu as Infantry, Ranged and Mobile. They have BARRACKS_HP.
+    barracks: { name: 'Grunt Barracks', cost: 75, r: 26 * SCALE, squad: 'infantry', hp: BARRACKS_HP },
+    barracksSpear: { name: 'Spearmen Barracks', cost: 100, r: 26 * SCALE, squad: 'spearman', hp: BARRACKS_HP },
+    barracksElite: { name: 'Elite Barracks', cost: 150, r: 26 * SCALE, squad: 'elite', hp: BARRACKS_HP },
+    barracksArmored: { name: 'Armored Barracks', cost: 175, r: 26 * SCALE, squad: 'armored', hp: BARRACKS_HP },
+    barracksShort: { name: 'Skirmisher Barracks', cost: 125, r: 26 * SCALE, squad: 'short', hp: BARRACKS_HP },
+    barracksLong: { name: 'Marksmen Barracks', cost: 150, r: 26 * SCALE, squad: 'long', hp: BARRACKS_HP },
+    barracksCaster: { name: 'Caster Sanctum', cost: 200, r: 26 * SCALE, squad: 'caster', hp: BARRACKS_HP },
+    barracksCreature: { name: 'Creature Pens', cost: 125, r: 26 * SCALE, squad: 'creature', hp: BARRACKS_HP },
+    barracksMounted: { name: 'Stables', cost: 175, r: 26 * SCALE, squad: 'mounted', hp: BARRACKS_HP },
+    barracksWarMachine: { name: 'Siege Works', cost: 400, r: 26 * SCALE, squad: 'warMachine', hp: BARRACKS_HP },
     // Allies: barracks that train a single, larger specialist (see SQUAD_KINDS in squads.js).
     allyEngineer: { name: 'Engineer Lodge', cost: 150, r: 19 * SCALE, squad: 'engineer' },
     allyMedic: { name: 'Medic Tent', cost: 175, r: 19 * SCALE, squad: 'medic' },
