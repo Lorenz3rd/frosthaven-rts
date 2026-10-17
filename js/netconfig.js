@@ -1,26 +1,21 @@
 // Network settings: how players' PCs find a path to the host (see net.js). Safe to edit.
 //
-// Players on the same Wi-Fi connect straight across it, as long as Windows has that Wi-Fi set to a
-// Private network on both PCs (Public blocks the local address lookup browsers use) and the Wi-Fi
-// doesn't keep devices apart (guest, school and work networks often do). Players on different networks (different homes,
-// a phone hotspot...) usually connect straight over the internet too: the STUN servers below tell each
-// PC its public address so the two can get through their routers. Some networks (strict school or work
-// Wi-Fi, some mobile carriers, a few home routers) block that; those players need a TURN relay server,
-// which passes the game traffic along for them. No free relay works without an account any more, so
-// `turn` starts empty. If a player sees "Found the room, but couldn't connect to the host's PC", add one:
-//
-//   1. Make a free account at https://www.metered.ca/stun-turn ("Open Relay": a monthly free allowance;
-//      one 6-player game uses roughly 0.5 GB an hour per relayed player).
-//   2. In its dashboard, copy your TURN username and credential into the entries below and uncomment them.
-//   3. Give everyone the same netconfig.js (the host's copy matters most: a relay on the host's side is
-//      usually enough for every player to reach it).
-// Note: anyone with the game files can read these credentials. That's normal for a game among friends;
-// don't reuse a password from anything else.
+// Paths, in the order they're tried at once:
+//   - Same network: PCs on one Wi-Fi, on a PC's hotspot or joined by a cable connect directly. This needs
+//     "Same network" (Connection settings, on by default) and the microphone allowed on at least one of
+//     the two PCs, ideally the host's: browsers only share a PC's local addresses with pages that have it.
+//   - Over the internet: the STUN servers below tell each PC its public address so the two can get
+//     through their routers. Works between most homes and phone hotspots.
+//   - A TURN relay passes the game traffic along when neither works (strict school or work Wi-Fi, some
+//     mobile carriers, a router that blocks it). No free relay works without an account any more, so the
+//     easiest place for one is the game itself: Network Multiplayer › Connection settings › Relay server,
+//     on the host's PC (it stays on that PC, out of the shared files). "Test relay" checks it.
+//     Or list it in `turn` below for every PC that has these files. Anyone with the files can read
+//     credentials put here, so don't reuse a password from anything else.
 (function (G) {
   G.NET_CONFIG = {
     stun: [
       'stun:stun.l.google.com:19302',
-      'stun:stun1.l.google.com:19302',
       'stun:stun.cloudflare.com:3478'
     ],
     turn: [

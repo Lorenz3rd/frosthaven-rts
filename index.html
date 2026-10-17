@@ -75,10 +75,22 @@
       <div class="netForm">
         <label><span class="k">Your name</span><input id="netName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="e.g. Caleb"></label>
         <label><span class="k">Room name</span><input id="netRoom" maxlength="40" autocomplete="off" spellcheck="false" placeholder="e.g. frostbite"></label>
-        <label class="netLan"><input type="checkbox" id="netLan"><span><b>Same network</b> (one Wi-Fi, a PC's hotspot or a cable): connect the PCs directly. Your browser asks for microphone access first; it only shares the PC's network addresses with pages that have it. The game never listens.</span></label>
       </div>
       <p class="netStatus" id="netStatus" role="status"></p>
+      <button type="button" class="netCopy" id="netCopy" hidden>Copy details for troubleshooting</button>
       <div class="actions"><button type="button" data-back="home">Back</button><button type="button" id="netJoin">Join Room</button><button type="button" id="netCreate">Create Room</button></div>
+      <details class="netMore">
+        <summary>Connection settings</summary>
+        <label class="netCheck"><input type="checkbox" id="netLan"><span><b>Same network</b>: lets PCs on one Wi-Fi, on a PC's hotspot or joined by a cable connect directly. The browser asks for microphone access once, because it only shares a PC's local addresses with pages that have it. Nothing is recorded.</span></label>
+        <div class="netRelay">
+          <p><b>Relay server</b> (optional): gets players through any network, for when they can't connect directly (strict Wi-Fi, mobile data, a router that blocks it). Set it up on the host's PC with a free TURN account (for example metered.ca or expressturn.com): paste the server address, or the whole ICE server list from its dashboard.</p>
+          <label><span class="k">Server</span><input id="relayUrls" autocomplete="off" spellcheck="false" placeholder="turn:relay.example.com:3478"></label>
+          <label><span class="k">Username</span><input id="relayUser" autocomplete="off" spellcheck="false"></label>
+          <label><span class="k">Password</span><input id="relayPass" type="password" autocomplete="off"></label>
+          <div class="actions"><button type="button" id="relayTest">Test relay</button><button type="button" id="relayClear">Clear</button></div>
+          <p class="netStatus" id="relayStatus" role="status"></p>
+        </div>
+      </details>
     </div>
     <div class="screen" data-screen="lobby" hidden>
       <h2 id="lobbyTitle">Room</h2>
@@ -106,6 +118,7 @@
         </div>
       </div>
       <p class="netStatus" id="lobbyStatus" role="status"></p>
+      <button type="button" class="netCopy" id="lobbyCopy" hidden>Copy details for troubleshooting</button>
       <div class="actions"><button type="button" id="lobbyLeave">Leave Room</button><button type="button" id="lobbyStart">Start Battle</button></div>
     </div>
   </div>

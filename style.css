@@ -345,9 +345,21 @@ body.in-menu > :not(#menu):not(script) { display: none !important; }
   user-select: text;
 }
 #menu input:focus { outline: none; border-color: var(--bronze-hi); }
-#menu .netForm .netLan { align-items: flex-start; cursor: pointer; font-size: 12px; line-height: 1.4; color: #b8a888; }
-#menu .netForm .netLan b { color: #e9f2fa; font-weight: normal; }
-#menu .netLan input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--bronze-hi); }
+#menu .netCopy { font-size: 12px; padding: 4px 10px; }
+#menu .netMore { width: min(560px, 100%); font-size: 12px; line-height: 1.45; color: #b8a888; }
+#menu .netMore summary { cursor: pointer; text-align: center; font-size: 13px; color: var(--bronze-hi); padding: 4px; }
+#menu .netMore[open] { padding: 10px 12px; background: var(--frame); border: 1px solid #3b2e1e; display: flex; flex-direction: column; gap: 10px; }
+#menu .netMore b { color: #e9f2fa; font-weight: normal; }
+#menu .netMore p { margin: 0; }
+#menu .netCheck { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+#menu .netCheck input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--bronze-hi); }
+#menu .netRelay { display: flex; flex-direction: column; gap: 6px; }
+#menu .netRelay label { display: flex; align-items: center; gap: 10px; }
+#menu .netRelay .k { width: 70px; flex: none; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: #8a7a62; }
+#menu .netRelay input { font-size: 13px; padding: 4px 6px; font-family: Consolas, ui-monospace, monospace; }   /* credentials: show exact letter case */
+#menu .netRelay .actions { justify-content: center; }
+#menu .netRelay .actions button { font-size: 13px; padding: 6px 12px; }
+#menu .netRelay .netStatus { font-size: 12px; text-align: left; }
 #menu .netStatus { margin: 0; min-height: 1.3em; font-size: 14px; color: #b8a888; text-align: center; text-shadow: 0 1px 3px #000; max-width: 560px; }
 #menu .netStatus.error { color: #ff8a70; }
 #menu .team {
@@ -379,6 +391,12 @@ body.in-menu > :not(#menu):not(script) { display: none !important; }
   opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s; text-align: center;
 }
 #netToast.show { opacity: 1; transform: translate(-50%, 0); }
+#netBanner {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 41; max-width: min(620px, calc(100vw - 32px));
+  padding: 10px 18px; font-size: 14px; color: #ffd9c8; background: var(--frame); border: 1px solid #a8503c; text-align: center;
+}
+#netBanner[hidden] { display: none; }
+#gameOver .copy { margin-left: 8px; }
 @media (max-width: 640px) {
   #menu .sides { flex-direction: column; align-items: center; }
   #menu .side, #menu .pick, #menu .team { width: 100%; }

@@ -33,6 +33,8 @@
       if (!nameIn.value) nameIn.value = G.net.savedName();
       if (!roomIn.value) roomIn.value = G.net.savedRoom();
       $('#netLan').checked = G.net.savedLan();
+      fillRelay();
+      G.net.warmUp();
       (nameIn.value ? roomIn : nameIn).focus();
     }
   }
@@ -620,10 +622,20 @@
   // Network multiplayer: create or join a room by name, then the lobby (teams of up to 3, each player
   // picks a hero, the host picks both races and starts). See net.js.
   // ---------------------------------------------------------------------------
+  // A status line; a plain notice stays up at least a few seconds before the lobby's player count replaces it.
+  let noticeUntil = 0;
   function netStatus(id, text, error) {
     const el = $(id);
     el.textContent = text || '';
     el.classList.toggle('error', !!error);
+    noticeUntil = text ? performance.now() + 5000 : 0;
+  }
+  // "Copy details" under a failure that came with a report.
+  const reports = {};
+  function showCopy(id, report) {
+    reports[id] = report || '';
+    $(id).hidden = !report;
+    $(id).textContent = 'Copy details for troubleshooting';
   }
 
   let netBusy = false;
@@ -631,20 +643,37 @@
     if (netBusy) return;
     netBusy = true;
     for (const b of root.querySelectorAll('#netJoin, #netCreate')) b.disabled = true;
+    showCopy('#netCopy', '');
+    G.net.onStatus = text => netStatus('#netStatus', text);
     netStatus('#netStatus', create ? 'Creating the room…' : 'Looking for the room…');
     try {
-      await G.net.openLan($('#netLan').checked);
-      await (create ? G.net.host($('#netRoom').value, $('#netName').value) : G.net.join($('#netRoom').value, $('#netName').value));
+      const r = await (create ? G.net.host($('#netRoom').value, $('#netName').value) : G.net.join($('#netRoom').value, $('#netName').value));
       netStatus('#netStatus', '');
-      netStatus('#lobbyStatus', '');
+      netStatus('#lobbyStatus', r && r.warning, !!(r && r.warning));
+      showCopy('#lobbyCopy', '');
       // A rejoin into a battle under way goes straight on to the game (G.net.onStart).
       if (!G.net.inGame) show('lobby');
-    } catch (msg) {
-      netStatus('#netStatus', String(msg), true);
+    } catch (f) {
+      netStatus('#netStatus', G.net.describe(f), true);
+      showCopy('#netCopy', f && f.report);
     } finally {
+      G.net.onStatus = null;
       netBusy = false;
       for (const b of root.querySelectorAll('#netJoin, #netCreate')) b.disabled = false;
     }
+  }
+
+  // Connection settings: "Same network" and the relay server, kept on this PC.
+  function fillRelay() {
+    const r = G.net.relay();
+    $('#relayUrls').value = r ? r.urls.join(' ') : '';
+    $('#relayUser').value = r ? r.username : '';
+    $('#relayPass').value = r ? r.credential : '';
+  }
+  function readRelay() {
+    const r = G.net.parseRelay($('#relayUrls').value, $('#relayUser').value, $('#relayPass').value);
+    G.net.setRelay(r);
+    return r;
   }
 
   // How a player reaches the host, as measured by the host: same Wi-Fi, over the internet, or relayed.
@@ -695,9 +724,12 @@
     start.hidden = !host;
     start.disabled = L.started;
     const empty = [0, 1].some(t => !L.players.some(p => p.team === t));
+    // The usual line, unless news is showing (a problem stays until replaced; other news a few seconds).
     if (L.started && !host) netStatus('#lobbyStatus', 'The battle is starting…');
-    else if (host && empty) netStatus('#lobbyStatus', 'One army has no players yet: you can still start, but nobody will fight for it.');
-    else if (!$('#lobbyStatus').classList.contains('error')) netStatus('#lobbyStatus', `${L.players.length} of 6 players`);
+    else if (!$('#lobbyStatus').classList.contains('error') && performance.now() > noticeUntil) {
+      netStatus('#lobbyStatus', host && empty ? 'One army has no players yet: you can still start, but nobody will fight for it.' : `${L.players.length} of 6 players`);
+      noticeUntil = 0;
+    }
   }
 
   function wireNet() {
@@ -705,6 +737,19 @@
     $('#netCreate').addEventListener('click', () => netGo(true));
     $('#netJoin').addEventListener('click', () => netGo(false));
     for (const id of ['#netName', '#netRoom']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') netGo(false); });
+    for (const id of ['#netCopy', '#lobbyCopy']) {
+      $(id).addEventListener('click', async () => { $(id).textContent = (await G.net.copyReport(reports[id])) ? 'Copied: paste it to whoever is helping' : 'Couldn’t copy (the browser blocked it)'; });
+    }
+    $('#netLan').addEventListener('change', e => G.net.setLan(e.target.checked));
+    for (const id of ['#relayUrls', '#relayUser', '#relayPass']) $(id).addEventListener('change', () => { if (readRelay()) fillRelay(); });
+    $('#relayTest').addEventListener('click', async () => {
+      const r = readRelay();
+      fillRelay();
+      netStatus('#relayStatus', 'Testing the relay…');
+      const res = await G.net.testRelay(r);
+      netStatus('#relayStatus', res.text, !res.ok);
+    });
+    $('#relayClear').addEventListener('click', () => { G.net.setRelay(null); fillRelay(); netStatus('#relayStatus', 'Relay removed.'); });
     $('#lobbyLeave').addEventListener('click', () => { G.net.leave(); show('net'); });
     $('#lobbyStart').addEventListener('click', () => {
       if (G.net.role !== 'host' || G.net.lobby.started) return;
@@ -730,11 +775,19 @@
       });
     }
     // Lobby updates, and errors / the room going away.
+    // { error, left }: out of the room (back to the room screen). { notice, error }: news to show.
     G.net.onChange = msg => {
       if (screen === 'game') return;
-      if (msg && msg.error) {
-        if (msg.left && screen === 'lobby') { show('net'); netStatus('#netStatus', msg.error, true); return; }
-        netStatus(screen === 'lobby' ? '#lobbyStatus' : '#netStatus', msg.error, true);
+      if (msg && msg.left) {
+        if (screen === 'lobby') show('net');
+        netStatus('#netStatus', msg.error, true);
+        showCopy('#netCopy', msg.report);
+        return;
+      }
+      if (msg && msg.notice) {
+        const lobby = screen === 'lobby';
+        netStatus(lobby ? '#lobbyStatus' : '#netStatus', msg.notice, !!msg.error);
+        showCopy(lobby ? '#lobbyCopy' : '#netCopy', msg.report);
       }
       if (screen === 'lobby') renderLobby();
     };

@@ -1,18 +1,26 @@
 // Network multiplayer: rooms over the Wi-Fi or the internet, up to 3 vs 3.
 //
 // One player hosts. The host's browser runs the real game; everyone else's browser is a window onto it.
-//   - Rooms are found by name through the free PeerJS broker (it only introduces the browsers to each
-//     other; game traffic then goes straight between the PCs over WebRTC data channels: across the
-//     Wi-Fi when they share one, over the internet when they don't, or through a TURN relay when a
-//     network blocks direct connections; see netconfig.js).
+//   - Rooms are found by name through the free PeerJS broker (the "room finder": it only introduces the
+//     browsers to each other). Game traffic then goes straight between the PCs over WebRTC data
+//     channels: across the local network when they share one (Wi-Fi, a PC's hotspot, a cable), over the
+//     internet when they don't, or through a TURN relay when no direct path exists (a relay account set
+//     up under Connection settings or in netconfig.js; the host's PC is the one that needs it).
+//   - "Same network" (on unless turned off): a browser offers a page only its internet-facing address,
+//     hidden behind a random *.local name, unless the page has microphone access. With access, every
+//     local address is offered as it is, so PCs sharing a network find each other even when the Wi-Fi
+//     can't look the names up, or one PC shares a hotspot. The microphone is closed straight away.
+//   - Joining runs in stages (room finder, host answers, network path, game channel, welcome), each with
+//     its own time limit. A failure is explained from what both PCs offered, with a report to copy.
+//   - A link that closes or goes silent for SILENCE_MS reconnects by itself, in the lobby and in battle.
 //   - Clients send commands (move, attack, cast, build...) and the host applies them to their hero.
 //   - The host sends world snapshots 20 times a second: every entity, building, projectile, shot, coin
 //     pile and effect, as changes since the last snapshot, plus the particles and floating numbers born
 //     since then. Clients keep stand-in copies ("mirrors") of everything and draw those with the normal
 //     renderer, smoothing movement between snapshots. Over a slow or jittery link the host sends
 //     snapshots less often and clients smooth over longer, so the game slows its updates rather than stalls.
-//   - A player who drops out has their hero taken off the field. Joining the room again with the same
-//     name (or from the same tab) puts them back in control of it where it stood.
+//   - A player who drops out has their hero taken off the field until they're back (automatically, or by
+//     joining the room again with the same name).
 //
 // Wire format: JSON strings; anything over CHUNK characters is split into '~id|i|n|part' pieces.
 (function (G) {
@@ -21,21 +29,38 @@
   const SNAP_MIN = 3, SNAP_MAX = 6;  // simulation steps between snapshots: 20 a second, down to 10 on a struggling link
   const LERP_MIN = 55, LERP_MAX = 250;  // clients ease entities to each new snapshot over this long (follows arrival jitter)
   const CHUNK = 48000;           // characters per data channel message (browsers cap messages near 256 KB)
-  const SILENCE_MS = 8000;       // no word from a peer for this long: it's gone
   const BACKLOG = 2e6;           // bytes queued on a channel before we stop sending it deltas and resync
+  const SILENCE_MS = 6000;       // no word from a peer for this long: the link is gone (reconnecting is quick)
+  // Joining, stage by stage: how long each may take.
+  const FINDER_MS = 10000;       // reaching the room finder
+  const ANSWER_MS = 10000;       // the host's PC answering the call
+  const PATH_MS = 12000;         // finding a network path to it (a working one is found in a few seconds)
+  const OPEN_MS = 10000;         // the game channel opening on that path
+  const WELCOME_MS = 8000;       // the host's game letting us in
+  const JOIN_TRIES = 2;          // attempts at a first join (only failures another try might fix are retried)
+  const RECONNECT_MS = 90000;    // a dropped player keeps trying to get back this long
+  const HOST_WAIT_MS = 60000;    // host: a caller with no open channel after this long is given up on
+  const LOBBY_HOLD_MS = 30000;   // host: a dropped player's lobby place is held this long
+  const ASK_MS = 15000;          // waiting on the microphone prompt before going on without it
   const PEER_LIB = typeof Peer === 'function';
 
   const net = G.net = {
     role: null,            // 'host' | 'client' | null
     lobby: null,           // { room, races: [west, east], players: [{ id, name, team, hero, host, connected }], started }
     myId: null,
-    onChange: null,        // menu: lobby changed, or an error / disconnect (msg)
+    onChange: null,        // menu: lobby changed, or { error | notice, left, report } (left: back to the room screen)
+    onStatus: null,        // menu: progress while creating or joining a room
     onStart: null,         // menu: a client was handed the match config and its first snapshot; launch the game
-    inGame: false
+    inGame: false,
+    reconnecting: false
   };
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const status = text => { if (net.onStatus) net.onStatus(text); };
+  function changed(msg) { if (net.onChange) net.onChange(msg); }
+
   // ---------------------------------------------------------------------------
-  // Identity: a per-tab id (so several tabs on one PC are separate players) and a remembered name.
+  // Identity: a per-tab id (so several tabs on one PC are separate players) and remembered settings.
   // ---------------------------------------------------------------------------
   function store(kind) { try { return window[kind]; } catch (e) { return null; } }
   function get(kind, k) { try { return store(kind)?.getItem(k) ?? null; } catch (e) { return null; } }
@@ -47,6 +72,8 @@
   };
   net.savedName = () => get('localStorage', 'frost.netName') || '';
   net.savedRoom = () => get('localStorage', 'frost.netRoom') || '';
+  net.savedLan = () => get('localStorage', 'frost.netLan') !== '0';
+  net.setLan = on => set('localStorage', 'frost.netLan', on ? '1' : '0');
 
   const slug = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
   const cleanName = s => String(s || '').replace(/[<>&"]/g, '').trim().slice(0, 16);
@@ -66,80 +93,199 @@
     return (printCache = (h >>> 0).toString(16));
   }
 
+  // A failed create / join / reconnect: what went wrong, for the player, plus a report to copy.
+  // retry: another attempt might work. final: nothing will (don't keep reconnecting).
+  function failure(code, message, o) { return Object.assign({ code, message, retry: false, final: false, report: '' }, o || {}); }
+  net.describe = f => (f && f.message) || String(f);
+
   // ---------------------------------------------------------------------------
-  // Transport
+  // Connection settings: STUN servers (from netconfig.js) to find a way through routers, and TURN relays
+  // (netconfig.js, or this PC's Connection settings) for networks that allow no direct path.
   // ---------------------------------------------------------------------------
-  let peer = null, chunkSeq = 0;
-  // Connection settings from netconfig.js: STUN servers to find a way through routers, TURN relays for
-  // networks that allow no direct path.
-  function peerOpts() {
-    const c = G.NET_CONFIG || {};
-    const iceServers = [];
-    if (c.stun && c.stun.length) iceServers.push({ urls: c.stun });
-    for (const t of c.turn || []) iceServers.push(t);
-    const config = { iceServers };
-    if (c.forceRelay) config.iceTransportPolicy = 'relay';
-    return { debug: 1, config };
+  net.relay = () => { try { return JSON.parse(get('localStorage', 'frost.netRelay') || 'null'); } catch (e) { return null; } };
+  net.setRelay = r => set('localStorage', 'frost.netRelay', r && r.urls && r.urls.length ? JSON.stringify(r) : '');
+  // Relay settings as typed: one or more addresses ("turn:host:port", "host:port"), or the ICE server
+  // list pasted from the relay's dashboard, username and credential included.
+  net.parseRelay = function (text, username, credential) {
+    text = String(text || '').trim();
+    if (!text) return null;
+    const field = k => { const m = text.match(new RegExp(k + '["\']?\\s*:\\s*["\']([^"\']+)["\']')); return m ? m[1] : ''; };
+    let urls = [...text.matchAll(/turns?:[^\s"',\]]+/g)].map(m => m[0]);
+    if (!urls.length) urls = text.split(/[\s,]+/).filter(Boolean).map(u => 'turn:' + u.replace(/^[a-z]+:\/\//i, ''));
+    return { urls: [...new Set(urls)], username: String(username || field('username')).trim(), credential: String(credential || field('credential')).trim() };
+  };
+  function iceServers() {
+    const c = G.NET_CONFIG || {}, list = [];
+    if (c.stun && c.stun.length) list.push({ urls: c.stun });
+    for (const t of c.turn || []) list.push(t);
+    const r = net.relay();
+    if (r && r.urls && r.urls.length) list.push({ urls: r.urls, username: r.username, credential: r.credential });
+    return list;
+  }
+  const hasRelay = () => iceServers().some(s => [].concat(s.urls).some(u => /^turns?:/.test(u)));
+  function rtcConfig() {
+    const config = { iceServers: iceServers() };
+    if ((G.NET_CONFIG || {}).forceRelay) config.iceTransportPolicy = 'relay';
+    return config;
   }
 
-  // Same network: Chrome only offers a page the address of the PC's internet connection, hidden behind
-  // a *.local name. A PC sharing a hotspot (or with a cable to the other PC) then never offers the
-  // address the other PC can reach, and some Wi-Fi can't look the names up. Once the page has
-  // microphone access, Chrome offers every network address, unhidden. The microphone is closed at once.
-  let lanOpen = false;
-  net.savedLan = () => get('localStorage', 'frost.netLan') === '1';
-  net.openLan = async function (on) {
-    set('localStorage', 'frost.netLan', on ? '1' : '0');
-    if (!on || lanOpen) return;
-    const md = navigator.mediaDevices;
-    if (!md || !md.getUserMedia) throw 'This browser can’t connect PCs directly. Untick "Same network", or open the game from http://localhost or a https link.';
-    const grab = async c => { const s = await md.getUserMedia(c); for (const t of s.getTracks()) t.stop(); };
-    try {
-      try { await grab({ audio: true }); } catch (e) { if (e.name === 'NotFoundError') await grab({ video: true }); else throw e; }
-      lanOpen = true;
-    } catch (e) {
-      throw e.name === 'NotAllowedError' ? '"Same network" needs microphone access. Click the icon at the left of the address bar, allow the microphone, and try again (or untick "Same network").'
-        : e.name === 'NotFoundError' ? 'This PC has no microphone or camera, which "Same network" needs. Untick it to connect the usual way.'
-        : 'Couldn’t get microphone access (' + e.name + '). Untick "Same network" to connect the usual way.';
-    }
+  // Checks relay settings: asks the relay for an address, the way a real connection would.
+  net.testRelay = async function (r) {
+    if (!r || !r.urls || !r.urls.length) return { ok: false, text: 'Type the relay server’s address first.' };
+    let pc;
+    try { pc = new RTCPeerConnection({ iceServers: [{ urls: r.urls, username: r.username, credential: r.credential }], iceTransportPolicy: 'relay' }); }
+    catch (e) { return { ok: false, text: 'Those settings aren’t a valid relay address (' + e.message + '). Addresses look like turn:relay.example.com:3478.' }; }
+    const errs = [];
+    let addr = null;
+    pc.onicecandidate = e => { if (e.candidate && / typ relay /.test(e.candidate.candidate)) addr = addr || e.candidate.candidate.split(' ')[4]; };
+    pc.onicecandidateerror = e => errs.push(e);
+    pc.createDataChannel('test');
+    await pc.setLocalDescription(await pc.createOffer());
+    const end = performance.now() + 10000;
+    while (!addr && pc.iceGatheringState !== 'complete' && performance.now() < end) await sleep(100);
+    pc.close();
+    if (addr) return { ok: true, text: `The relay works: it gave this PC the address ${addr}. Players who can’t connect directly will go through it.` };
+    if (errs.some(e => e.errorCode === 401)) return { ok: false, text: 'The relay refused the username or password. Copy them again from the relay’s dashboard.' };
+    if (errs.some(e => /lookup/i.test(e.errorText || ''))) return { ok: false, text: 'Couldn’t find that relay server name. Check the address.' };
+    if (errs.length) return { ok: false, text: 'Couldn’t reach the relay server (' + errs[0].errorCode + ' ' + (errs[0].errorText || '') + '). This network may block its port: add the port 443 addresses from its dashboard too (turns:…:443).' };
+    return { ok: false, text: 'The relay didn’t answer within 10 seconds. Check the address; this network may block it.' };
   };
+
+  // "Same network": microphone access, so the browser offers every local address (see the top).
+  // Returns null when on, or why it's off.
+  let lanOn = false;
+  async function openLan() {
+    if (!net.savedLan() || lanOn) return null;
+    const md = navigator.mediaDevices;
+    if (!md || !md.getUserMedia) return 'this page can’t ask for it (open the game from a file, http://localhost or https, not another PC’s address)';
+    try {
+      const st = await navigator.permissions.query({ name: 'microphone' });
+      if (st.state === 'granted') { lanOn = true; return null; }   // granted before: nothing to open
+      if (st.state === 'denied') return 'microphone access is blocked for this page (allow it from the icon at the left of the address bar)';
+    } catch (e) { /* no permissions API: just ask */ }
+    status('Allow microphone access in the browser’s prompt (top left) so PCs on the same network can connect directly. Nothing is recorded.');
+    const grab = async c => { const s = await md.getUserMedia(c); for (const t of s.getTracks()) t.stop(); };
+    const ask = (async () => {
+      try { await grab({ audio: true }); }
+      catch (e) {
+        if (e.name === 'NotReadableError') return;   // allowed, but in use elsewhere: good enough
+        if (e.name !== 'NotFoundError') throw e;
+        await grab({ video: true });                 // no microphone: a camera does the same
+      }
+    })();
+    ask.then(() => { lanOn = true; }, () => {});
+    try {
+      await Promise.race([ask, sleep(ASK_MS).then(() => { throw { name: 'Timeout' }; })]);
+      lanOn = true;
+      return null;
+    } catch (e) {
+      return e.name === 'NotAllowedError' ? 'microphone access was not allowed'
+        : e.name === 'NotFoundError' ? 'this PC has no microphone or camera'
+        : e.name === 'Timeout' ? 'the microphone prompt wasn’t answered'
+        : 'microphone access failed (' + e.name + ')';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Diagnostics: the addresses each PC offered, from the session descriptions (they collect every
+  // trickled candidate, and stay readable after the connection closes). host = the PC's own address
+  // (*.local when hidden), srflx = its public address, relay = a TURN relay's.
+  // ---------------------------------------------------------------------------
+  function candidates(desc) {
+    return ((desc && desc.sdp) || '').split(/\r?\n/).filter(l => l.startsWith('a=candidate:')).map(l => {
+      const f = l.split(' ');
+      return { type: f[7], address: f[4], port: f[5], protocol: (f[2] || '').toLowerCase() };
+    });
+  }
+  const showCands = list => list.map(c => `${c.type} ${c.address}:${c.port} ${c.protocol}`).join(', ') || 'none';
+  const isPrivate = a => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|f[cd]|fe80)/i.test(a) || /\.local$/.test(a);
+  function pathFacts(pc) {
+    const L = pc ? candidates(pc.localDescription) : [], R = pc ? candidates(pc.remoteDescription) : [];
+    const has = (list, t) => list.some(c => c.type === t);
+    const pub = list => list.filter(c => c.type === 'srflx').map(c => c.address);
+    const real = list => list.some(c => c.type === 'host' && !/\.local$/.test(c.address) && isPrivate(c.address));
+    return { L, R, has, sameNet: pub(L).some(a => pub(R).includes(a)), realL: real(L), realR: real(R) };
+  }
+
+  // Why no network path to the other PC worked, in words; `side` is who's reading it.
+  function explainPath(pc, a, side) {
+    const { L, R, has, sameNet, realL, realR } = pathFacts(pc);
+    const other = side === 'host' ? 'their PC' : 'the host’s PC', me = 'this PC';
+    const hints = [];
+    let code, why;
+    if (a.connectedOnce) {
+      code = 'dropped';
+      why = `A connection to ${other} was made, then lost within seconds: the network is dropping traffic between the PCs (weak or overloaded Wi-Fi?).`;
+    } else if (!has(L, 'srflx') && !has(L, 'relay')) {
+      code = 'no-udp';
+      why = `${me[0].toUpperCase() + me.slice(1)} couldn’t get an internet address for game traffic: this network blocks the kind of traffic games use (UDP), or a VPN, extension or policy limits the browser.`;
+      hints.push('Try another network (a phone hotspot works), or turn off a VPN.');
+    } else if (!R.length) {
+      code = 'no-remote';
+      why = `${other[0].toUpperCase() + other.slice(1)} offered no network addresses: its browser or network blocks WebRTC.`;
+    } else if (!has(R, 'srflx') && !has(R, 'relay')) {
+      code = 'remote-no-udp';
+      why = `The network ${side === 'host' ? 'they are' : 'the host is'} on blocks the kind of traffic games use (UDP).`;
+    } else if (sameNet) {
+      code = 'same-network';
+      why = 'You’re on the same network as ' + (side === 'host' ? 'them' : 'the host') + ', but the PCs couldn’t reach each other directly, and your router doesn’t pass traffic back in through its public address.';
+      if (!realL && !realR) hints.push('Turn on “Same network” (Connection settings) on the host’s PC, and allow the microphone when the browser asks: without it the browser hides the PC’s local address.');
+      else hints.push('The PCs know each other’s local addresses, so something between them blocks traffic: the Wi-Fi keeps devices apart (guest, school or work networks do), or a firewall / antivirus on one PC.');
+      hints.push('A way around it: the joining PC connects to the host PC’s own hotspot (Windows: Settings › Network & internet › Mobile hotspot), or both use a phone hotspot.');
+    } else {
+      code = 'no-direct';
+      why = 'Your network and ' + (side === 'host' ? 'theirs' : 'the host’s') + ' don’t allow a direct connection between them (a strict router or firewall: common on mobile data and school or work Wi-Fi).';
+    }
+    if (!hasRelay()) hints.push('A relay server gets through every network: set one up under Connection settings on the host’s PC.');
+    else if (!has(L, 'relay') && !has(R, 'relay')) hints.push('A relay server is set up but gave no address: check it with “Test relay” in Connection settings.');
+    return failure(code, why + (hints.length ? ' ' + hints.join(' ') : ''), { retry: code === 'dropped', short: 'No network path to ' + other });
+  }
+
+  function report(what, a, pc, f) {
+    const { L, R } = pathFacts(pc);
+    return [
+      `Frost RTS network report · ${new Date().toISOString()}`,
+      `${what}${a ? ` · attempt ${a.n}` : ''}${f ? ` · ${f.code}` : ''}`,
+      f ? `Problem: ${f.message}` : '',
+      a ? 'Timeline:\n' + a.marks.map(m => '  ' + m).join('\n') : '',
+      `This PC offered: ${showCands(L)}`,
+      `Other PC offered: ${showCands(R)}`,
+      pc ? `States: ice ${pc.iceConnectionState}, connection ${pc.connectionState}, signaling ${pc.signalingState}` : '',
+      a && a.iceErrors.length ? 'Address errors: ' + a.iceErrors.join(' | ') : '',
+      `Same network: ${net.savedLan() ? (lanOn ? 'on' : 'on, but no microphone access') : 'off'} · relay: ${hasRelay() ? 'set up' : 'none'} · build ${fingerprint()}`,
+      navigator.userAgent
+    ].filter(Boolean).join('\n');
+  }
+  net.lastReport = '';
 
   // How a link travels and its round trip: 'lan' (same network), 'direct' (over the internet) or
   // 'relay' (through a TURN server), from the connection's selected candidate pair.
   async function measure(link) {
-    const pc = link.conn.peerConnection;
-    if (!pc || !pc.getStats) return;
+    const pc = link.pc;
+    if (!pc || !pc.getStats || pc.connectionState === 'closed') return;
     try {
       const stats = await pc.getStats();
       let pair = null;
       stats.forEach(r => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId); });
       if (!pair) stats.forEach(r => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
       if (!pair) return;
-      const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
-      const types = [local && local.candidateType, remote && remote.candidateType];
-      link.route = types.includes('relay') ? 'relay' : types.every(t => t === 'host') ? 'lan' : 'direct';
+      const local = stats.get(pair.localCandidateId) || {}, remote = stats.get(pair.remoteCandidateId) || {};
+      const addr = c => c.address || c.ip || '';
+      link.route = local.candidateType === 'relay' || remote.candidateType === 'relay' ? 'relay'
+        : local.candidateType === 'host' && (remote.candidateType === 'host' || isPrivate(addr(remote))) ? 'lan' : 'direct';
       if (pair.currentRoundTripTime !== undefined) link.ping = Math.round(pair.currentRoundTripTime * 1000);
     } catch (e) { /* closed meanwhile */ }
   }
 
-  // A join that found the room but got no path: log the addresses each side offered (read from the
-  // session descriptions, which collect every trickled candidate and stay readable after PeerJS closes
-  // the connection). 'host' entries are the PCs' own addresses (Chrome hides them as *.local names),
-  // 'srflx' their public ones, 'relay' TURN.
-  function logCandidates(pc) {
-    try {
-      const cands = desc => ((desc && desc.sdp) || '').split(/\r?\n/).filter(l => l.startsWith('a=candidate:'))
-        .map(l => { const f = l.split(' '); return `${f[7]} ${f[4]}:${f[5]} ${f[2]}`; });
-      // Plain text, so it can be copied straight out of the console.
-      console.warn('[net] could not connect to the host\n  this PC: ' + (cands(pc.localDescription).join(', ') || 'none')
-        + '\n  host PC: ' + (cands(pc.remoteDescription).join(', ') || 'none') + '\n  ice: ' + pc.iceConnectionState);
-    } catch (e) { /* nothing to show */ }
-  }
+  // ---------------------------------------------------------------------------
+  // Transport
+  // ---------------------------------------------------------------------------
+  let peer = null, warm = null, chunkSeq = 0;
 
   function wrap(conn) {
-    const link = { conn, last: performance.now(), parts: {}, onMessage: null, player: null, ready: false, needFull: false };
+    const link = { conn, pc: conn.peerConnection, last: performance.now(), parts: {}, onMessage: null, player: null, ready: false, needFull: false, mute: false };
     link.sendRaw = s => {
-      if (!conn.open) return;
+      if (!conn.open || link.mute) return;
       try {
         if (s.length <= CHUNK) { conn.send(s); return; }
         const id = ++chunkSeq, n = Math.ceil(s.length / CHUNK);
@@ -149,7 +295,9 @@
     link.send = obj => link.sendRaw(JSON.stringify(obj));
     // Bytes waiting to go out: the browser's queue plus messages PeerJS is holding back.
     link.backlog = () => (conn.dataChannel ? conn.dataChannel.bufferedAmount : 0) + (conn.bufferSize || 0) * CHUNK;
+    link.close = () => { try { conn.close(); } catch (e) { /* gone */ } try { link.pc && link.pc.close(); } catch (e) { /* gone */ } };
     conn.on('data', d => {
+      if (link.mute) return;
       link.last = performance.now();
       if (typeof d !== 'string') return;
       let text = d;
@@ -169,29 +317,38 @@
     return link;
   }
 
-  function changed(msg) { if (net.onChange) net.onChange(msg); }
-
   function needLib() {
     if (PEER_LIB) return null;
-    return 'Could not load the networking library (PeerJS). Check that this PC is online, then reload.';
+    return failure('no-lib', 'Couldn’t load the networking library (PeerJS from cdnjs.cloudflare.com). Check that this PC is online, then reload the page.');
   }
+
+  // Joining starts sooner with the room finder already reached: done when the room screen opens.
+  net.warmUp = function () {
+    if (!PEER_LIB || peer || (warm && !warm.destroyed)) return;
+    try { warm = new Peer({ debug: 1, config: rtcConfig() }); warm.on('error', () => { /* a join will retry */ }); } catch (e) { warm = null; }
+  };
 
   // Tear everything down (leaving the room, or after a fatal error).
   function shutdown() {
     clearInterval(beat); beat = 0;
+    clearTimeout(finderTimer); finderTimer = 0;
     if (peer) { try { peer.destroy(); } catch (e) { /* already gone */ } }
-    peer = null; hostLink = null;
+    peer = null; hostLink = null; peerErr = null;
+    pending.clear();
     net.role = null; net.lobby = null;
   }
 
   net.leave = function () {
+    const s = session;
+    session = null;   // stops any reconnecting
     if (net.role === 'host') for (const p of players()) if (p.link) p.link.send({ t: 'closed' });
-    if (net.role === 'client' && hostLink) hostLink.send({ t: 'bye' });
+    if (s && hostLink) hostLink.send({ t: 'bye' });
     // Give the goodbye a moment to leave before the connection closes.
     const p = peer;
     peer = null;
     setTimeout(() => { try { p && p.destroy(); } catch (e) { /* gone */ } }, 150);
     shutdown();
+    hideBanner();
   };
 
   // ---------------------------------------------------------------------------
@@ -214,104 +371,185 @@
     return n;
   }
 
-  net.host = function (roomName, playerName) {
-    return new Promise((resolve, reject) => {
-      const err = needLib(); if (err) return reject(err);
-      const room = roomName.trim(), id = slug(room), name = cleanName(playerName);
-      if (!id) return reject('Type a room name (letters or numbers).');
-      if (!name) return reject('Type your name first.');
-      set('localStorage', 'frost.netName', name); set('localStorage', 'frost.netRoom', room);
-      shutdown();
-      fingerprint();
+  // Resolves with { warning } (null, or why "Same network" is off); rejects with a failure.
+  net.host = async function (roomName, playerName) {
+    const lib = needLib(); if (lib) throw lib;
+    const room = String(roomName || '').trim(), id = slug(room), name = cleanName(playerName);
+    if (!id) throw failure('input', 'Type a room name (letters or numbers).');
+    if (!name) throw failure('input', 'Type your name first.');
+    set('localStorage', 'frost.netName', name); set('localStorage', 'frost.netRoom', room);
+    session = null;
+    shutdown();
+    if (warm) { try { warm.destroy(); } catch (e) { /* gone */ } warm = null; }
+    fingerprint();
+    const off = await openLan();
+    status('Creating the room…');
+    await new Promise((resolve, reject) => {
+      const p = peer = new Peer(PREFIX + id, { debug: 1, config: rtcConfig() });
       let settled = false;
-      peer = new Peer(PREFIX + id, peerOpts());
-      peer.on('open', () => {
+      const fail = f => { if (settled) return; settled = true; clearTimeout(timer); if (peer === p) shutdown(); reject(f); };
+      const timer = setTimeout(() => fail(failure('no-finder', 'Couldn’t reach the room finder (0.peerjs.com) within 10 seconds. Check that this PC is online; some school, work or public Wi-Fi blocks it.')), FINDER_MS);
+      p.on('open', () => {
+        if (peer !== p) return;
+        if (settled) { finderBack(); return; }
+        settled = true; clearTimeout(timer);
         net.role = 'host';
         net.myId = net.myToken();
         net.lobby = { room, races: ['human', 'algox'], started: false,
           players: [{ id: net.myId, name, team: 0, hero: G.HEROES[0].id, host: true, connected: true, link: null }] };
         startBeat();
-        settled = true; resolve();
+        resolve();
         changed();
       });
-      peer.on('connection', onIncoming);
-      peer.on('disconnected', () => {
-        // Lost the broker (not the players): reconnect so the room can still be found.
-        setTimeout(() => { if (peer && !peer.destroyed && peer.disconnected) try { peer.reconnect(); } catch (e) { /* retry next time */ } }, 1500);
-      });
-      peer.on('error', e => {
+      p.on('connection', onIncoming);
+      p.on('disconnected', () => { if (peer === p && settled && net.role === 'host') finderLost(); });
+      p.on('error', e => {
         console.warn('[net] host error', e.type, e);
-        const msg = e.type === 'unavailable-id' ? `A room called "${room}" is already open. Join it, or pick another name.`
-          : e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error' ? 'Could not reach the room finder. Check the internet connection.'
-          : e.type === 'browser-incompatible' ? 'This browser does not support WebRTC. Use Chrome or Edge.'
-          : null;
-        if (!settled) { settled = true; shutdown(); reject(msg || 'Could not create the room (' + e.type + ').'); }
-        else if (msg && e.type !== 'unavailable-id') changed({ error: msg });
+        if (settled) return;   // after the room is open: the room finder retries by itself (finderLost)
+        fail(failure(e.type, e.type === 'unavailable-id' ? `A room called “${room}” is already open. To play in it, use Join Room. If it was yours a moment ago, wait half a minute for the room finder to let the name go, or pick another name.`
+          : e.type === 'browser-incompatible' ? 'This browser doesn’t support WebRTC. Use Chrome or Edge.'
+          : e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error' || e.type === 'socket-closed' ? 'Couldn’t reach the room finder (0.peerjs.com). Check that this PC is online; some school, work or public Wi-Fi blocks it.'
+          : `Couldn’t create the room (${e.type}).`));
       });
     });
+    return { warning: off ? `“Same network” is off on this PC: ${off}. Players on the same Wi-Fi or on this PC’s hotspot may not be able to connect (players elsewhere can).` : null };
   };
 
+  // The room finder dropped this PC: players already in are unaffected, but nobody new can find the
+  // room until it's back. Keep reconnecting.
+  let finderTimer = 0, finderTries = 0;
+  function finderLost() {
+    if (finderTimer) return;
+    finderTries = 0;
+    console.warn('[net] lost the room finder; reconnecting');
+    changed({ notice: 'Lost touch with the room finder: players already here are fine, but nobody new can join until it’s back. Reconnecting…', error: true });
+    const retry = () => {
+      finderTimer = 0;
+      if (!peer || peer.destroyed || net.role !== 'host' || !peer.disconnected) return;
+      finderTries++;
+      try { peer.reconnect(); } catch (e) { /* next time */ }
+      finderTimer = setTimeout(retry, Math.min(15000, 2000 * finderTries));
+    };
+    finderTimer = setTimeout(retry, 1000);
+  }
+  function finderBack() {
+    clearTimeout(finderTimer); finderTimer = 0;
+    console.info('[net] room finder reconnected');
+    changed({ notice: 'Room finder reconnected: players can join again.' });
+    if (net.inGame) toast('Room finder reconnected: players can join again');
+  }
+
+  const pending = new Set();   // callers that haven't said hello yet
   function onIncoming(conn) {
     const link = wrap(conn);
+    const meta = conn.metadata || {};
+    link.who = cleanName(meta.name) || 'A player';
+    link.t0 = performance.now();
+    link.a = { n: meta.n || 1, marks: [], iceErrors: [], connectedOnce: false };
+    const mark = what => link.a.marks.push(`${String(Math.round(performance.now() - link.t0)).padStart(6)} ms  ${what}`);
+    mark(`${link.who} is calling`);
     link.onMessage = m => {
       if (m.t === 'hello') { hello(link, m); return; }
+      // Answered straight away: a host tab in the background gets its timers slowed to once a minute,
+      // so its own pings can't be relied on to keep a lobby link alive.
+      if (m.t === 'ping') { link.send({ t: 'pong' }); return; }
       const p = link.player;
       if (!p || p.link !== link) return;
       if (m.t === 'pick') pick(p, m);
       else if (m.t === 'cmd' && Array.isArray(m.c)) for (const c of m.c) cmdQueue.push({ p, c });
-      else if (m.t === 'bye') dropLink(link);
+      else if (m.t === 'bye') dropLink(link, true);
     };
     conn.on('close', () => dropLink(link));
-    conn.on('error', () => dropLink(link));
+    conn.on('error', e => { mark('channel error: ' + (e && e.type)); dropLink(link); });
+    // The hello can only come once the channel is open: the silence clock starts then.
+    conn.on('open', () => { link.last = performance.now(); mark('game channel open'); });
+    const pc = link.pc;
+    if (pc) {
+      pc.addEventListener('iceconnectionstatechange', () => {
+        mark('network path: ' + pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') link.a.connectedOnce = true;
+        if (pc.iceConnectionState === 'failed' && pending.has(link)) giveUp(link);
+      });
+      pc.addEventListener('connectionstatechange', () => {
+        mark('connection: ' + pc.connectionState);
+        if (pc.connectionState === 'failed' && pending.has(link)) giveUp(link);
+      });
+      pc.addEventListener('icecandidateerror', e => { if (link.a.iceErrors.length < 12) link.a.iceErrors.push(`${e.errorCode} ${e.errorText || ''} ${e.url || ''}`.trim()); });
+    }
     pending.add(link);
+    if (!net.lobby || !net.lobby.started) changed({ notice: `${link.who} is connecting…` });
   }
-  const pending = new Set();   // links that haven't said hello yet
 
-  function reject(link, reason) {
-    link.send({ t: 'reject', reason });
-    setTimeout(() => { try { link.conn.close(); } catch (e) { /* gone */ } }, 300);
+  // A caller that never got a working channel: tell the host why, as far as this side can tell.
+  function giveUp(link) {
+    if (!pending.delete(link)) return;
+    const f = link.conn.open ? failure('no-hello', `${link.who} connected but their game never introduced itself (it may be frozen).`) : explainPath(link.pc, link.a, 'host');
+    const text = link.conn.open ? f.message : `${link.who} couldn’t connect: ${f.message}`;
+    net.lastReport = report('Host: a player couldn’t connect', link.a, link.pc, f);
+    console.warn('[net] ' + text + '\n' + net.lastReport);
+    link.close();
+    if (net.inGame) toast(`${link.who} couldn’t connect (see the joining PC for details)`);
+    else changed({ notice: text, error: true, report: net.lastReport });
+  }
+
+  function rejectLink(link, code, reason) {
+    link.send({ t: 'reject', code, reason });
+    setTimeout(() => link.close(), 400);
+    const why = { version: 'their game files are a different version (they need the same files as this PC)', full: 'the room is full', started: 'the battle had already started' }[code];
+    if (why) {
+      const text = `${link.who} tried to join, but ${why}.`;
+      console.warn('[net] ' + text);
+      if (net.inGame) toast(text); else changed({ notice: text, error: true });
+    }
   }
 
   function hello(link, m) {
     pending.delete(link);
-    if (!net.lobby) return reject(link, 'The room has closed.');
-    if (m.ver !== fingerprint()) return reject(link, 'Your game files don’t match the host’s. Everyone needs the same version of the game (copy the host’s files, or all play from the same web link).');
+    if (!net.lobby) return rejectLink(link, 'closed', 'The room has closed.');
+    if (m.ver !== fingerprint()) return rejectLink(link, 'version', `Your game files don’t match the host’s (host build ${fingerprint()}, yours ${m.ver}). Everyone needs the same version: update both PCs (git pull, or copy the host’s game folder), then reload with Ctrl+Shift+R.`);
     const name = cleanName(m.name);
-    if (!name) return reject(link, 'Type your name first.');
+    if (!name) return rejectLink(link, 'name', 'Type your name first.');
     let p = players().find(q => q.id === m.id && !q.host);
     // Coming back from another tab or after closing the browser: the same name takes back a dropped hero.
     if (!p) p = players().find(q => !q.connected && !q.host && q.name.toLowerCase() === name.toLowerCase());
     if (p) {
-      if (p.link && p.link !== link) { const old = p.link; p.link = null; try { old.conn.close(); } catch (e) { /* gone */ } }
+      if (p.link && p.link !== link) { const old = p.link; p.link = null; old.close(); }
     } else {
-      if (net.lobby.started) return reject(link, 'This battle has already started. Only players who were in it can rejoin.');
-      if (players().length >= MAX_PER_TEAM * 2) return reject(link, 'The room is full (6 players).');
+      if (net.lobby.started) return rejectLink(link, 'started', 'This battle has already started. Only players who were in it can rejoin.');
+      if (players().length >= MAX_PER_TEAM * 2) return rejectLink(link, 'full', 'The room is full (6 players).');
       p = { id: m.id, name: '', team: openTeam(), hero: G.HEROES[players().length % G.HEROES.length].id, host: false, connected: false, link: null };
       players().push(p);
     }
     p.name = uniqueName(name, p);
-    const back = net.lobby.started && !p.connected;
-    p.connected = true; p.link = link; link.player = p;
+    const back = !p.connected && (net.lobby.started || p.leftAt);
+    p.connected = true; p.link = link; p.leftAt = 0; link.player = p;
+    console.info(`[net] ${p.name} joined after ${Math.round(performance.now() - link.t0)} ms`);
     link.send({ t: 'welcome', you: p.id, lobby: publicLobby() });
     if (net.lobby.started) {
       heroBack(p);
       sendGame(link);
-      if (back) note(`${p.name} is back`);
     }
+    if (back) note(`${p.name} is back`);
+    changed({ notice: back ? `${p.name} is back.` : `${p.name} joined.` });
     lobbyChanged();
+    setTimeout(() => measure(link), 1500);
   }
 
-  function dropLink(link) {
-    pending.delete(link);
+  // A player's link closed or went silent. In the lobby their place is held a while (they're probably
+  // reconnecting); in battle their hero leaves the field until they're back. bye: they left on purpose.
+  function dropLink(link, bye) {
+    if (pending.has(link)) { if (bye) pending.delete(link); else giveUp(link); return; }
     const p = link.player;
     if (!p || p.link !== link) return;
     p.link = null; p.connected = false;
+    link.close();
     if (!net.lobby) return;
     if (!net.lobby.started) {
-      net.lobby.players = players().filter(q => q !== p);
+      if (bye) net.lobby.players = players().filter(q => q !== p);
+      else { p.leftAt = performance.now(); changed({ notice: `${p.name} lost the connection: holding their place while they reconnect…`, error: true }); }
     } else {
       heroAway(p);
-      note(`${p.name} disconnected — their hero is out until they rejoin`);
+      note(bye ? `${p.name} left the game` : `${p.name} lost the connection — their hero is out until they’re back`);
     }
     lobbyChanged();
   }
@@ -349,79 +587,249 @@
   // ---------------------------------------------------------------------------
   // Joining
   // ---------------------------------------------------------------------------
-  let hostLink = null, pendingConfig = null, pendingSnap = null;
+  let session = null;          // client: { room, id, name, myId } while in a room (outlives reconnects)
+  let hostLink = null, pendingConfig = null, pendingSnap = null, peerErr = null;
 
-  net.join = function (roomName, playerName) {
+  // The room finder, reached (reusing the one warmed up on the room screen).
+  function ensurePeer() {
     return new Promise((resolve, reject) => {
-      const err = needLib(); if (err) return reject(err);
-      const room = roomName.trim(), id = slug(room), name = cleanName(playerName);
-      if (!id) return reject('Type the room name.');
-      if (!name) return reject('Type your name first.');
-      set('localStorage', 'frost.netName', name); set('localStorage', 'frost.netRoom', room);
-      shutdown();
-      let settled = false;
-      const fail = msg => { if (settled) return; settled = true; clearTimeout(timer); shutdown(); reject(msg); };
-      // Found the room but no path to the host's PC: a network on one side blocks the connection.
-      const blocked = 'Found the room, but couldn’t connect to the host’s PC: a network or firewall is blocking the connection. '
-        + 'On the same Wi-Fi: on both PCs open Settings › Network & internet › Wi-Fi › this network and set "Network profile type" to Private (Public blocks it), and let your browser through Windows Firewall on private networks; guest, school and work Wi-Fi often keep devices apart, so try a phone hotspot. '
-        + 'Otherwise, add a TURN relay server in js/netconfig.js (see the notes there) or try another network.';
-      // The host has answered once its reply (remote description) is in: from then on, a failure is the path.
-      let conn = null, pc = null;
-      const found = () => !!(pc && pc.remoteDescription);
-      const failBlocked = () => { if (settled) return; if (pc) logCandidates(pc); fail(blocked); };
-      const timer = setTimeout(() => found() ? failBlocked() : fail(`Couldn’t reach the room "${room}". Check the internet connection and that the host still has the room open.`), 20000);
-      peer = new Peer(peerOpts());
-      peer.on('error', e => {
-        console.warn('[net] client error', e.type, e);
-        if (e.type === 'peer-unavailable') fail(`No room called "${room}" was found. Check the spelling, or ask the host to create it.`);
-        else if (!settled) fail(e.type === 'browser-incompatible' ? 'This browser does not support WebRTC. Use Chrome or Edge.' : 'Could not reach the room finder. Check the internet connection.');
-      });
-      peer.on('open', () => {
-        conn = peer.connect(PREFIX + id, { serialization: 'raw', reliable: true });
-        pc = conn.peerConnection;   // kept: PeerJS drops its reference when the connection closes
-        const link = wrap(conn);
-        hostLink = link;
-        conn.on('iceStateChanged', st => { if (st === 'failed') failBlocked(); });
-        conn.on('error', e => { if (e && e.type === 'negotiation-failed') failBlocked(); });
-        conn.on('open', () => link.send({ t: 'hello', id: net.myToken(), name, ver: fingerprint() }));
-        conn.on('close', () => { if (hostLink === link) hostGone(settled ? 'The connection to the host was lost.' : null); if (!settled) fail('The host closed the connection.'); });
-        let pinged = 0;
-        link.onMessage = m => {
-          // Keep-alive from the host's own traffic too: timers in a long-hidden tab may fire only once a minute.
-          const now = performance.now();
-          if (settled && now - pinged > 1000) { pinged = now; link.send({ t: 'ping' }); }
-          if (m.t === 'reject') { fail(m.reason); return; }
-          if (m.t === 'welcome') {
-            settled = true; clearTimeout(timer);
-            net.role = 'client'; net.myId = m.you; net.lobby = m.lobby;
-            startBeat();
-            resolve(); changed();
-            return;
-          }
-          if (m.t === 'lobby') { net.lobby = m.lobby; changed(); return; }
-          if (m.t === 'note') { toast(m.text); return; }
-          if (m.t === 'closed') { hostGone('The host closed the room.', true); return; }
-          if (m.t === 'game') { pendingConfig = m.config; return; }
-          if (m.t === 'snap') {
-            if (net.inGame) applySnap(m);
-            else if (m.full && pendingConfig) { pendingSnap = m; net.inGame = true; if (net.onStart) net.onStart(pendingConfig); }
-          }
-        };
-      });
+      if (!peer && warm && !warm.destroyed) { peer = warm; warm = null; }
+      if (!peer || peer.destroyed) {
+        peer = new Peer({ debug: 1, config: rtcConfig() });
+      }
+      const p = peer;
+      p.options.config = rtcConfig();   // settings may have changed since it was made
+      if (!p._ntWired) {
+        p._ntWired = true;
+        p.on('error', e => { console.warn('[net] client error', e.type, e.message || ''); if (peer === p && peerErr) peerErr(e); });
+      }
+      if (p.open) return resolve(p);
+      if (p.disconnected && !p.destroyed) { try { p.reconnect(); } catch (e) { /* the timeout reports it */ } }
+      const onOpen = () => { off(); resolve(p); };
+      const onError = e => {
+        if (!['network', 'server-error', 'socket-error', 'socket-closed', 'browser-incompatible', 'unavailable-id'].includes(e.type)) return;
+        off();
+        reject(failure('no-finder', e.type === 'browser-incompatible' ? 'This browser doesn’t support WebRTC. Use Chrome or Edge.'
+          : 'Couldn’t reach the room finder (0.peerjs.com). Check that this PC is online; some school, work or public Wi-Fi blocks it.', { retry: e.type !== 'browser-incompatible', short: 'The room finder didn’t answer' }));
+      };
+      const off = () => { p.off('open', onOpen); p.off('error', onError); };
+      p.on('open', onOpen);
+      p.on('error', onError);
     });
-  };
-
-  // closed: the host ended the room on purpose (nothing to rejoin).
-  function hostGone(why, closed) {
-    if (!net.role && !net.inGame) return;
-    const wasIn = net.inGame;
-    shutdown();
-    if (why === null) return;
-    if (wasIn) showLost(why, closed);
-    else changed({ error: why, left: true });
   }
 
-  // Heartbeat: pings both ways each second; a silent peer is dropped.
+  // One try at reaching the host and being let in. Resolves { link, welcome }; rejects with a failure.
+  function connectHost(s, n, rejoin) {
+    return new Promise((resolve, reject) => {
+      const a = { n, t0: performance.now(), marks: [], iceErrors: [], connectedOnce: false, stage: '' };
+      const mark = what => { a.marks.push(`${String(Math.round(performance.now() - a.t0)).padStart(6)} ms  ${what}`); };
+      let conn = null, pc = null, link = null, timer = 0, over = false;
+      const end = f => {
+        if (over) return;
+        over = true; clearTimeout(timer); peerErr = null;
+        if (!f) return;
+        mark('gave up: ' + f.code);
+        f.report = report(rejoin ? 'Reconnecting to the host' : 'Joining room “' + s.room + '”', a, pc, f);
+        net.lastReport = f.report;
+        if (link) { link.dead = true; link.close(); }
+        reject(f);
+      };
+      const stage = (name, ms, why) => { a.stage = name; clearTimeout(timer); timer = setTimeout(() => end(why()), ms); };
+      const say = text => { if (!rejoin) status(text); };
+      say('Looking for the room…');
+      stage('finder', FINDER_MS, () => failure('no-finder', 'Couldn’t reach the room finder (0.peerjs.com) within 10 seconds. Check that this PC is online; some school, work or public Wi-Fi blocks it.', { retry: true, short: 'The room finder didn’t answer' }));
+      ensurePeer().then(() => {
+        if (over) return;
+        mark('room finder reached');
+        peerErr = e => {
+          if (e.type === 'peer-unavailable') end(failure('no-room', rejoin ? `The room “${s.room}” isn’t open any more (the host may have closed it, or lost the room finder for a moment).`
+            : `No room called “${s.room}” is open. Check the spelling (the host’s lobby shows the room name), and that the host has created it.`, { retry: !!rejoin, short: 'The room wasn’t found' }));
+          else if (['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected'].includes(e.type)) end(failure('no-finder', 'Lost the room finder (0.peerjs.com) while joining. Check that this PC is online.', { retry: true, short: 'Lost the room finder' }));
+        };
+        conn = peer.connect(PREFIX + s.id, { serialization: 'raw', reliable: true, metadata: { name: s.name, id: s.myId, n } });
+        pc = conn.peerConnection;
+        link = wrap(conn);
+        mark('calling the host');
+        stage('answer', ANSWER_MS, () => failure('no-answer', `Found the room “${s.room}”, but the host’s PC didn’t answer. Its game may be frozen or its tab asleep (minimized a long time), or it lost the room finder. Ask the host to check their screen; if it keeps happening, the host can create the room again.`, { retry: true, short: 'The host didn’t answer' }));
+        pc.addEventListener('signalingstatechange', () => {
+          if (!pc.remoteDescription || a.stage !== 'answer') return;
+          mark('host answered');
+          say('Found the room: connecting to the host’s PC…');
+          stage('path', PATH_MS, () => explainPath(pc, a, 'client'));
+          watchPath();
+        });
+        // Give up as soon as no path can work, not at the time limit: this PC has no usable address at
+        // all, or every address pair has been tried and failed (twice in a row, a second apart).
+        const watchPath = async () => {
+          let failedPolls = 0;
+          while (!over && a.stage === 'path') {
+            await sleep(1000);
+            if (over || a.stage !== 'path') return;
+            // (Local addresses alone may still connect on a network that only blocks the internet.)
+            const { L } = pathFacts(pc);
+            if (pc.iceGatheringState === 'complete' && !L.length && performance.now() - a.t0 > 3000) {
+              mark('no usable address on this PC');
+              return end(explainPath(pc, a, 'client'));
+            }
+            let pairs = 0, failed = 0;
+            const states = {};
+            try { (await pc.getStats()).forEach(r => { if (r.type === 'candidate-pair') { pairs++; states[r.state] = (states[r.state] || 0) + 1; if (r.state === 'failed') failed++; } }); } catch (e) { return; }
+            const sum = Object.entries(states).map(([k, v]) => v + ' ' + k).join(', ');
+            if (sum !== a.pairSum) { a.pairSum = sum; mark('address pairs: ' + (sum || 'none yet')); }
+            failedPolls = pc.iceGatheringState === 'complete' && pairs > 0 && failed === pairs ? failedPolls + 1 : 0;
+            if (failedPolls >= 2) { mark(`all ${pairs} address pairs failed`); return end(explainPath(pc, a, 'client')); }
+          }
+        };
+        pc.addEventListener('iceconnectionstatechange', () => {
+          const st = pc.iceConnectionState;
+          mark('network path: ' + st);
+          if (st === 'connected' || st === 'completed') {
+            a.connectedOnce = true;
+            if (a.stage === 'path') stage('open', OPEN_MS, () => failure('no-channel', 'Reached the host’s PC, but the game channel didn’t open on the connection. Something on the network is interfering (a VPN, or an antivirus “web shield”?).', { retry: true, short: 'The game channel didn’t open' }));
+          }
+          if (st === 'failed' && (a.stage === 'path' || a.stage === 'open')) end(explainPath(pc, a, 'client'));
+        });
+        pc.addEventListener('connectionstatechange', () => {
+          mark('connection: ' + pc.connectionState);
+          if (pc.connectionState === 'failed' && (a.stage === 'path' || a.stage === 'open')) end(explainPath(pc, a, 'client'));
+        });
+        pc.addEventListener('icecandidateerror', e => { if (a.iceErrors.length < 12) a.iceErrors.push(`${e.errorCode} ${e.errorText || ''} ${e.url || ''}`.trim()); });
+        conn.on('open', () => {
+          if (over) return;
+          mark('game channel open');
+          say('Connected: waiting for the host’s game…');
+          stage('welcome', WELCOME_MS, () => failure('no-welcome', 'Connected to the host’s PC, but its game didn’t let you in. It may be frozen: ask the host to check their screen, then try again.', { retry: true, short: 'The host’s game didn’t respond' }));
+          link.send({ t: 'hello', id: s.myId, name: s.name, ver: fingerprint() });
+        });
+        conn.on('close', () => { if (!over) end(failure('closed', 'The host’s PC closed the connection while you were joining.', { retry: true, short: 'The host closed the connection' })); });
+        conn.on('error', e => {
+          mark('channel error: ' + (e && e.type));
+          if (!over && e && e.type === 'negotiation-failed') end(explainPath(pc, a, 'client'));
+        });
+        link.onMessage = m => {
+          if (over) return;
+          if (m.t === 'reject') { end(failure('rejected-' + (m.code || 'other'), m.reason, { final: true })); return; }
+          if (m.t !== 'welcome') return;
+          mark('let in');
+          over = true; clearTimeout(timer); peerErr = null;
+          console.info('[net] joined:\n' + a.marks.join('\n'));
+          resolve({ link, welcome: m });
+        };
+      }, f => end(f));
+    });
+  }
+
+  // Resolves with { warning } once in the room; rejects with a failure.
+  net.join = async function (roomName, playerName) {
+    const lib = needLib(); if (lib) throw lib;
+    const room = String(roomName || '').trim(), id = slug(room), name = cleanName(playerName);
+    if (!id) throw failure('input', 'Type the room name.');
+    if (!name) throw failure('input', 'Type your name first.');
+    set('localStorage', 'frost.netName', name); set('localStorage', 'frost.netRoom', room);
+    if (net.role === 'host') shutdown();
+    const s = session = { room, id, name, myId: net.myToken() };
+    const off = await openLan();
+    let last = null;
+    for (let n = 1; n <= JOIN_TRIES; n++) {
+      if (session !== s) throw failure('cancelled', 'Cancelled.');
+      try {
+        const { link, welcome } = await connectHost(s, n, false);
+        if (session !== s) { link.close(); throw failure('cancelled', 'Cancelled.'); }
+        adopt(s, link, welcome);
+        return { warning: null, lanOff: off };
+      } catch (f) {
+        last = f;
+        console.warn(`[net] join attempt ${n} failed: ${f.message}\n${f.report || ''}`);
+        if (session !== s || !f.retry || n === JOIN_TRIES) break;
+        status(`${f.short || 'That didn’t work'}: trying again…`);
+      }
+    }
+    if (session === s) { session = null; shutdown(); }
+    throw last;
+  };
+
+  // In the room: this link is the way to the host now.
+  function adopt(s, link, m) {
+    hostLink = link;
+    net.role = 'client'; net.myId = m.you; net.lobby = m.lobby;
+    link.onMessage = clientMessage;
+    link.conn.on('close', () => { if (hostLink === link) linkLost('the connection closed'); });
+    if (link.pc) link.pc.addEventListener('iceconnectionstatechange', () => { if (hostLink === link && link.pc.iceConnectionState === 'failed') linkLost('the network path failed'); });
+    startBeat();
+    setTimeout(() => measure(link), 1500);
+    changed();
+  }
+
+  let pinged = 0;
+  function clientMessage(m) {
+    // Keep-alive from the host's own traffic too: timers in a long-hidden tab may fire only once a minute.
+    const now = performance.now();
+    if (hostLink && now - pinged > 1000) { pinged = now; hostLink.send({ t: 'ping' }); }
+    if (m.t === 'lobby') { net.lobby = m.lobby; changed(); return; }
+    if (m.t === 'note') { toast(m.text); return; }
+    if (m.t === 'closed') { endSession(net.inGame ? 'The host ended the game.' : 'The host closed the room.', true); return; }
+    if (m.t === 'game') { if (!net.inGame) pendingConfig = m.config; return; }   // rejoining a battle we're still showing: keep it
+    if (m.t === 'snap') {
+      if (net.inGame) applySnap(m);
+      else if (m.full && pendingConfig) { pendingSnap = m; net.inGame = true; if (net.onStart) net.onStart(pendingConfig); }
+    }
+  }
+
+  // The link to the host closed or went silent: reconnect by ourselves (the host keeps our place).
+  let reconnecting = false;
+  function linkLost(why) {
+    if (!session || reconnecting) return;
+    const link = hostLink;
+    hostLink = null;
+    if (link) { link.dead = true; link.close(); }
+    reconnectLoop(session, why);
+  }
+
+  async function reconnectLoop(s, why) {
+    reconnecting = net.reconnecting = true;
+    console.warn('[net] lost the host (' + why + '): reconnecting');
+    const t0 = performance.now();
+    let n = 0, last = null;
+    while (session === s && performance.now() - t0 < RECONNECT_MS) {
+      n++;
+      const text = `Lost the connection to the host (${why}). Reconnecting${n > 1 ? `, attempt ${n}` : ''}…`;
+      if (net.inGame) { G.netLost = true; banner(text + ' The battle carries on when it’s back.'); }
+      else changed({ notice: text, error: true });
+      try {
+        const { link, welcome } = await connectHost(s, n, true);
+        if (session !== s) { link.close(); break; }
+        reconnecting = net.reconnecting = false;
+        adopt(s, link, welcome);
+        hideBanner();
+        if (net.inGame) { G.netLost = false; toast('Reconnected to the host'); }
+        else changed({ notice: 'Reconnected to the host.' });
+        return;
+      } catch (f) {
+        last = f;
+        console.warn(`[net] reconnect attempt ${n} failed: ${f.message}`);
+        if (f.final) break;
+        await sleep(Math.min(4000, 700 * n));
+      }
+    }
+    reconnecting = net.reconnecting = false;
+    hideBanner();
+    if (session !== s) return;
+    endSession(last && last.final ? last.message
+      : `Lost the connection to the host (${why}) and couldn’t get back within ${Math.round(RECONNECT_MS / 1000)} seconds.` + (last ? ' Last try: ' + last.message : ''), false, last && last.report);
+  }
+
+  // Out of the room for good. closed: the host ended it on purpose (nothing to rejoin).
+  function endSession(why, closed, rep) {
+    session = null;
+    const wasIn = net.inGame;
+    shutdown();
+    hideBanner();
+    if (rep) net.lastReport = rep;
+    if (wasIn) showLost(why, closed, rep);
+    else changed({ error: why, left: true, report: rep || '' });
+  }
+
+  // Heartbeat: pings both ways each second; a silent link is dropped (and the player reconnects).
   let beat = 0, beatNo = 0, lastRoutes = '';
   async function measureAll() {
     const ls = players().filter(p => p.link && p.link.conn.open).map(p => p.link);
@@ -437,15 +845,42 @@
       if (net.role === 'host') {
         broadcast({ t: 'ping' });
         if (++beatNo % 2 === 0) measureAll();
-        for (const p of players()) if (p.link && now - p.link.last > SILENCE_MS) { const l = p.link; try { l.conn.close(); } catch (e) { /* gone */ } dropLink(l); }
-        for (const l of pending) if (now - l.last > SILENCE_MS) { pending.delete(l); try { l.conn.close(); } catch (e) { /* gone */ } }
+        for (const p of players()) if (p.link && now - p.link.last > SILENCE_MS) dropLink(p.link);
+        for (const l of pending) if (now - (l.conn.open ? l.last : l.t0) > (l.conn.open ? SILENCE_MS : HOST_WAIT_MS)) giveUp(l);
+        // Lobby places held for dropped players run out.
+        if (net.lobby && !net.lobby.started) {
+          const gone = players().filter(p => !p.connected && !p.host && p.leftAt && now - p.leftAt > LOBBY_HOLD_MS);
+          if (gone.length) {
+            net.lobby.players = players().filter(p => !gone.includes(p));
+            changed({ notice: gone.map(p => p.name).join(', ') + ' didn’t come back: their place is open again.', error: true });
+            lobbyChanged();
+          }
+        }
       } else if (net.role === 'client' && hostLink) {
         hostLink.send({ t: 'ping' });
         if (++beatNo % 2 === 0) measure(hostLink);
-        if (now - hostLink.last > SILENCE_MS) hostGone('The host stopped responding.');
+        if (now - hostLink.last > SILENCE_MS) linkLost(`no word from it for ${Math.round(SILENCE_MS / 1000)} seconds`);
       }
     }, 1000);
   }
+
+  // Test hooks (tools/nettest): break the link the way a network would.
+  net._test = {
+    drop(how) {
+      const links = net.role === 'host' ? players().filter(p => p.link).map(p => p.link) : [hostLink].filter(Boolean);
+      for (const l of links) { if (how === 'mute') l.mute = true; else l.pc && l.pc.close(); }
+      return links.length;
+    },
+    dropFinder() { if (peer && !peer.destroyed) peer.disconnect(); },
+    freezeTimers() { clearInterval(beat); beat = 0; },   // as in a long-hidden tab
+    printParts() {
+      const fnText = (k, v) => (typeof v === 'function' ? v.toString() : v);
+      const parts = { data: JSON.stringify([G.HEROES, G.BUILDINGS, G.SQUAD_KINDS, G.RACES], fnText) };
+      for (const k of Object.keys(G).sort()) if (typeof G[k] === 'function') parts[k] = G[k].toString();
+      return parts;
+    },
+    session: () => session
+  };
 
   // ---------------------------------------------------------------------------
   // Hero commands. Local players call these on their own hero; the host calls them for remote players.
@@ -911,7 +1346,8 @@
   let outbox = [], lastMove = null;
   function send(c) { outbox.push(c); }
   function flushCommands() {
-    if (!outbox.length || !hostLink) return;
+    if (!hostLink) { outbox = []; return; }   // reconnecting: orders given meanwhile are dropped
+    if (!outbox.length) return;
     hostLink.send({ t: 'cmd', c: outbox });
     outbox = [];
   }
@@ -955,16 +1391,45 @@
   }
   net.toast = toast;
 
-  function showLost(why, closed) {
+  // While reconnecting in battle: a notice that stays up until the link is back.
+  let bannerEl = null;
+  function banner(text) {
+    if (!bannerEl) { bannerEl = document.createElement('div'); bannerEl.id = 'netBanner'; bannerEl.setAttribute('role', 'status'); document.body.appendChild(bannerEl); }
+    bannerEl.textContent = text;
+    bannerEl.hidden = false;
+  }
+  function hideBanner() { if (bannerEl) bannerEl.hidden = true; }
+
+  // A report onto the clipboard (for "Copy details"). Resolves true when it got there.
+  net.copyReport = async function (text) {
+    text = text || net.lastReport;
+    if (!text) return false;
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* not allowed here: the old way */ }
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { /* no clipboard */ }
+    ta.remove();
+    return ok;
+  };
+
+  function showLost(why, closed, rep) {
     net.inGame = false;
+    G.netLost = true;
     const el = document.getElementById('gameOver');
     if (!el || G.winner !== null) return;
     el.classList.add('defeat');
     el.querySelector('.result').textContent = 'Disconnected';
     el.querySelector('.detail').textContent = why + (closed ? '' : ' If the host is still playing, go back to the menu and join the same room to get your hero back.');
     el.querySelector('button').textContent = 'Back to menu';
+    if (rep && !el.querySelector('.copy')) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'copy'; b.textContent = 'Copy details';
+      b.addEventListener('click', async () => { b.textContent = (await net.copyReport(rep)) ? 'Copied' : 'Couldn’t copy'; });
+      el.querySelector('.panel').appendChild(b);
+    }
     el.hidden = false;
-    G.netLost = true;
   }
 
   // Return to the menu (reloading the page), landing on the network screen.
