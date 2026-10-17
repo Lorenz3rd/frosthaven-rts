@@ -345,6 +345,9 @@ body.in-menu > :not(#menu):not(script) { display: none !important; }
   user-select: text;
 }
 #menu input:focus { outline: none; border-color: var(--bronze-hi); }
+#menu .netForm .netLan { align-items: flex-start; cursor: pointer; font-size: 12px; line-height: 1.4; color: #b8a888; }
+#menu .netForm .netLan b { color: #e9f2fa; font-weight: normal; }
+#menu .netLan input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--bronze-hi); }
 #menu .netStatus { margin: 0; min-height: 1.3em; font-size: 14px; color: #b8a888; text-align: center; text-shadow: 0 1px 3px #000; max-width: 560px; }
 #menu .netStatus.error { color: #ff8a70; }
 #menu .team {

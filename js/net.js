@@ -82,6 +82,28 @@
     return { debug: 1, config };
   }
 
+  // Same network: Chrome only offers a page the address of the PC's internet connection, hidden behind
+  // a *.local name. A PC sharing a hotspot (or with a cable to the other PC) then never offers the
+  // address the other PC can reach, and some Wi-Fi can't look the names up. Once the page has
+  // microphone access, Chrome offers every network address, unhidden. The microphone is closed at once.
+  let lanOpen = false;
+  net.savedLan = () => get('localStorage', 'frost.netLan') === '1';
+  net.openLan = async function (on) {
+    set('localStorage', 'frost.netLan', on ? '1' : '0');
+    if (!on || lanOpen) return;
+    const md = navigator.mediaDevices;
+    if (!md || !md.getUserMedia) throw 'This browser can’t connect PCs directly. Untick "Same network", or open the game from http://localhost or a https link.';
+    const grab = async c => { const s = await md.getUserMedia(c); for (const t of s.getTracks()) t.stop(); };
+    try {
+      try { await grab({ audio: true }); } catch (e) { if (e.name === 'NotFoundError') await grab({ video: true }); else throw e; }
+      lanOpen = true;
+    } catch (e) {
+      throw e.name === 'NotAllowedError' ? '"Same network" needs microphone access. Click the icon at the left of the address bar, allow the microphone, and try again (or untick "Same network").'
+        : e.name === 'NotFoundError' ? 'This PC has no microphone or camera, which "Same network" needs. Untick it to connect the usual way.'
+        : 'Couldn’t get microphone access (' + e.name + '). Untick "Same network" to connect the usual way.';
+    }
+  };
+
   // How a link travels and its round trip: 'lan' (same network), 'direct' (over the internet) or
   // 'relay' (through a TURN server), from the connection's selected candidate pair.
   async function measure(link) {
@@ -108,7 +130,9 @@
     try {
       const cands = desc => ((desc && desc.sdp) || '').split(/\r?\n/).filter(l => l.startsWith('a=candidate:'))
         .map(l => { const f = l.split(' '); return `${f[7]} ${f[4]}:${f[5]} ${f[2]}`; });
-      console.warn('[net] could not connect to the host', { local: cands(pc.localDescription), remote: cands(pc.remoteDescription), ice: pc.iceConnectionState });
+      // Plain text, so it can be copied straight out of the console.
+      console.warn('[net] could not connect to the host\n  this PC: ' + (cands(pc.localDescription).join(', ') || 'none')
+        + '\n  host PC: ' + (cands(pc.remoteDescription).join(', ') || 'none') + '\n  ice: ' + pc.iceConnectionState);
     } catch (e) { /* nothing to show */ }
   }
 

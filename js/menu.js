@@ -32,6 +32,7 @@
       const nameIn = $('#netName'), roomIn = $('#netRoom');
       if (!nameIn.value) nameIn.value = G.net.savedName();
       if (!roomIn.value) roomIn.value = G.net.savedRoom();
+      $('#netLan').checked = G.net.savedLan();
       (nameIn.value ? roomIn : nameIn).focus();
     }
   }
@@ -632,6 +633,7 @@
     for (const b of root.querySelectorAll('#netJoin, #netCreate')) b.disabled = true;
     netStatus('#netStatus', create ? 'Creating the room…' : 'Looking for the room…');
     try {
+      await G.net.openLan($('#netLan').checked);
       await (create ? G.net.host($('#netRoom').value, $('#netName').value) : G.net.join($('#netRoom').value, $('#netName').value));
       netStatus('#netStatus', '');
       netStatus('#lobbyStatus', '');
