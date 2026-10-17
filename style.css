@@ -316,12 +316,16 @@ body.in-menu > :not(#menu):not(script) { display: none !important; }
 #menu .label { font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
 #menu .you .label { color: #7fb0e0; }
 #menu .enemy .label { color: #e0624f; }
-#menu .side .pad { font-size: 48px; opacity: 0.3; filter: grayscale(1); transition: opacity 0.2s; }
-#menu .side.joined .pad { opacity: 1; filter: none; }
+#menu .side .seats { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+#menu .side .seats li { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+#menu .side .seats .pad { font-size: 26px; width: 34px; text-align: center; }
+#menu .side .seats .open .pad { opacity: 0.3; filter: grayscale(1); }
+#menu .side .seats select { flex: 1; width: auto; min-width: 0; }
+#menu .side .add[hidden] { display: none; }
 #menu .side.joined.you, #menu .pick.ready.you { border-color: #7fb0e0; box-shadow: 0 0 16px rgba(127, 176, 224, 0.35); }
 #menu .side.joined.enemy, #menu .pick.ready.enemy { border-color: #e0624f; box-shadow: 0 0 16px rgba(224, 98, 79, 0.35); }
 #menu .side .status { font-size: 14px; text-align: center; min-height: 1.2em; }
-#menu .side:not(.joined) .status { animation: pulse 1.6s ease-in-out infinite; color: #b8a888; }
+#menu .side .open .status { flex: 1; text-align: left; animation: pulse 1.6s ease-in-out infinite; color: #b8a888; }
 @keyframes pulse { 50% { opacity: 0.4; } }
 #menu select { font: inherit; font-size: 12px; width: 100%; padding: 6px; color: var(--bone); background: #0e0b09; border: 1px solid #3b2e1e; }
 #menu .pick .who { font-size: 11px; color: #8a7a62; }
@@ -486,7 +490,12 @@ body.dev-mode #devBadge { display: block; }
 .buildMenu .name small { display: block; font-size: 10px; color: #8a7a62; letter-spacing: 0.05em; }
 
 /* ---- Selection cards: preview + hero info ---- */
-#menu .pick [hidden] { display: none !important; }
+#menu .pick [hidden], #menu .pick[hidden] { display: none !important; }
+/* Three or four players: narrower cards with shorter previews. */
+#menu .screen[data-screen="select"]:has(.sides.many) { width: min(1400px, 100%); }
+#menu .sides.many .pick { max-width: 320px; padding: 14px; }
+#menu .sides.many .pick .k { display: none; }
+#menu .sides.many .pick .preview { height: 160px; }
 #menu .pick .preview { width: 100%; height: 220px; display: block; background: radial-gradient(ellipse at 50% 70%, rgba(80, 100, 120, 0.35), rgba(7, 9, 12, 0) 70%); border: 1px solid #2a2218; }
 #menu .pick .info { width: 100%; display: flex; flex-direction: column; gap: 6px; }
 #menu .pick .stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; font-size: 11px; color: #d9ccb0; }
@@ -498,17 +507,21 @@ body.dev-mode #devBadge { display: block; }
 #menu .screen[data-screen="select"] { width: min(1000px, 100%); }
 @media (max-width: 640px) { #menu .pick .preview { height: 180px; } #menu .pick .abil { grid-template-columns: 1fr; } }
 
-/* ---- Split screen (local multiplayer): one view per player, left and right ---- */
+/* ---- Split screen (local multiplayer): the west army's views on the left, the east's on the right,
+   stacked when an army has more than one player. main.js places the seams and each HUD. ---- */
 #splitDivider { display: none; }
-body.split #splitDivider {
-  display: block; position: fixed; top: 0; bottom: 0; left: 50%; width: 4px; transform: translateX(-50%);
+body.split #splitDivider { display: block; }
+#splitDivider div { position: fixed; pointer-events: none; z-index: 5; }
+#splitDivider .v {
+  top: 0; bottom: 0; width: 4px; transform: translateX(-50%);
   background: linear-gradient(90deg, #000, var(--bronze) 30%, var(--bronze-hi) 50%, var(--bronze) 70%, #000);
-  pointer-events: none; z-index: 5;
+}
+#splitDivider .h {
+  height: 4px; transform: translateY(-50%);
+  background: linear-gradient(180deg, #000, var(--bronze) 30%, var(--bronze-hi) 50%, var(--bronze) 70%, #000);
 }
 body.split .hud { gap: 10px; padding: 8px 10px; max-width: calc(50vw - 24px); }
 body.split .hud .bars { width: 170px; }
-body.split .hud[data-slot="0"] { left: 25%; }
-body.split .hud[data-slot="1"] { left: 75%; }
 body.split #minimapFrame { right: auto; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 6; }
 @media (max-width: 1500px) {
   /* Narrow screens: the minimap moves to the top so the two HUDs keep the bottom edge. */

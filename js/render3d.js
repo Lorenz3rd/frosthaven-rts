@@ -71,7 +71,7 @@
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x07090c);
     scene.fog = new THREE.Fog(0x07090c, 2000, 5000);
-    // Batches fill once per frame (split screen renders twice), after the renderer's matrix update.
+    // Batches fill once per frame (split screen renders once per view), after the renderer's matrix update.
     scene.onBeforeRender = () => { if (batchedFrame !== frameNo) { batchedFrame = frameNo; batchModels(); } };
 
     G.camera.init();

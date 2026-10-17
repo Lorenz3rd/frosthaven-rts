@@ -16,27 +16,25 @@
       <h1>Frosthaven <span>RTS</span></h1>
       <nav class="options">
         <button type="button" data-go="single">Single Player</button>
-        <button type="button" data-go="local">Local Multiplayer</button>
+        <button type="button" data-go="local">Local Multiplayer<small>Split screen · up to 4 players</small></button>
         <button type="button" data-go="net">Network Multiplayer<small>Wi-Fi or internet · up to 3 vs 3</small></button>
         <button type="button" data-go="dev">Developer</button>
       </nav>
     </div>
     <div class="screen" data-screen="local" hidden>
       <h2>Local Multiplayer</h2>
-      <p class="hint">Each player presses Ⓐ on their Xbox controller to claim a side (or presses Enter to play with mouse &amp; keyboard). ◀ ▶ to switch sides, Ⓑ to leave.</p>
+      <p class="hint">Up to four players, one screen. Each player presses Ⓐ on their Xbox controller to join (or Enter to play with mouse &amp; keyboard). ◀ ▶ to change army, Ⓑ to leave.</p>
       <div class="sides">
         <div class="side you" data-side="west">
           <div class="label">West Army</div>
-          <div class="pad">🎮</div>
-          <div class="status"></div>
-          <select aria-label="West Army controller"></select>
+          <ul class="seats"></ul>
+          <select class="add" aria-label="Add a West Army player"></select>
         </div>
         <div class="vs">VS</div>
         <div class="side enemy" data-side="east">
           <div class="label">East Army</div>
-          <div class="pad">🎮</div>
-          <div class="status"></div>
-          <select aria-label="East Army controller"></select>
+          <ul class="seats"></ul>
+          <select class="add" aria-label="Add an East Army player"></select>
         </div>
       </div>
       <p class="padCount"></p>
@@ -44,9 +42,9 @@
     </div>
     <div class="screen" data-screen="select" hidden>
       <h2>Choose Your Champion</h2>
-      <p class="hint" id="selectHint">▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when both are ready.</p>
+      <p class="hint" id="selectHint">▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when everyone is ready.</p>
       <div class="sides">
-        <div class="pick you" data-side="west">
+        <div class="pick you" data-side="west" data-key="west">
           <div class="label">West Army</div>
           <div class="who"></div>
           <canvas class="preview" aria-label="West Army preview"></canvas>
@@ -56,7 +54,7 @@
           <button type="button" class="readyBtn">Lock in</button>
         </div>
         <div class="vs">VS</div>
-        <div class="pick enemy" data-side="east">
+        <div class="pick enemy" data-side="east" data-key="east">
           <div class="label">East Army</div>
           <div class="who"></div>
           <canvas class="preview" aria-label="East Army preview"></canvas>

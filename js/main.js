@@ -1,15 +1,15 @@
 // Boot: build the world, wire input to the hero, run the loop.
 (function (G) {
   // Starts the match in G.matchConfig (set by the menu). mode 'single': the player against a CPU hero
-  // (see ai.js) at cfg.difficulty. mode 'local': two players, split screen, each hero driven by the
-  // controller assigned to that side (or the mouse and keyboard, for one side). mode 'nethost' / 'netclient': a networked 3 vs 3 (see net.js); the
+  // (see ai.js) at cfg.difficulty. mode 'local': two to four players on one screen (cfg.players, up to three
+  // an army), each hero driven by its player's controller (or the mouse and keyboard, for one of them). mode 'nethost' / 'netclient': a networked 3 vs 3 (see net.js); the
   // host simulates every hero, a client only mirrors the host's world and sends its player's commands.
   // Anything else is the sandbox: the hero vs. training dummies and a static enemy barracks.
   //
   // Each player is { hero, cam, pad, menu, keyboard, scheme, label, moveMarker, act }. One-player games use
-  // G.camera, G.pad and the mouse and keyboard; split screen gives each player their own camera (half
-  // the screen), controller and build menu; a side assigned 'mkb' plays with the mouse and keyboard in
-  // their half instead (their pad never connects). `act` carries out the player's orders: straight on the hero, or (network client) as commands to the host.
+  // G.camera, G.pad and the mouse and keyboard; split screen gives each player their own camera (their
+  // army's half of the screen, stacked with teammates), controller and build menu; a player assigned 'mkb'
+  // plays with the mouse and keyboard in their view instead (their pad never connects). `act` carries out the player's orders: straight on the hero, or (network client) as commands to the host.
   G.startGame = function () {
     const canvas = document.getElementById('game');
 
@@ -18,6 +18,8 @@
     const single = cfg.mode === 'single', local = cfg.mode === 'local';
     const netHost = cfg.mode === 'nethost', netClient = cfg.mode === 'netclient', net = netHost || netClient;
     const west = (cfg.sides || [])[0] || {}, east = (cfg.sides || [])[1] || {};
+    // Local multiplayer's players (a match saved before four-player split screen named one a side).
+    const roster = !local ? [] : cfg.players || [['west', west], ['east', east]].map(([side, s]) => ({ side, gamepad: s.gamepad, hero: s.hero }));
     G.teamRace[G.TEAM.PLAYER] = net ? cfg.races[0] : west.race || 'human';
     G.teamRace[G.TEAM.ENEMY] = net ? cfg.races[1] : east.race || 'algox';
     const heroDef = G.heroById(west.hero || 'bannerspear');
@@ -43,9 +45,10 @@
       ...DUMMY_SPOTS.map(p => ({ x: p.x, y: p.y, r: 90 }))
     ]);
 
-    // Network games: up to three heroes a side, one by each front base (middle, then top, then bottom).
-    // The host makes them all; a client gets them (and the rest of the world) from the host's first snapshot.
-    let hero = null;
+    // Network games and local multiplayer: up to three heroes a side, one by each front base (middle, then
+    // top, then bottom). A network host makes them all; a client gets them (and the rest of the world) from
+    // the host's first snapshot.
+    let hero = null, localHeroes = [];
     const respawns = [];
     if (netHost) {
       const heroById = {}, perTeam = [0, 0];
@@ -62,6 +65,18 @@
       G.net.hostBegin(heroById);
     } else if (netClient) {
       hero = G.net.clientBegin(cfg);
+    } else if (local) {
+      const perTeam = [0, 0];
+      localHeroes = roster.map(r => {
+        const team = r.side === 'east' ? G.TEAM.ENEMY : G.TEAM.PLAYER;
+        const at = netSpawn(team, perTeam[team]++ % 3);
+        const h = new G.Hero(at.x, at.y, G.heroById(r.hero || (team === G.TEAM.ENEMY ? 'deathwalker' : 'bannerspear')), team);
+        if (team === G.TEAM.ENEMY) h.facing = Math.PI;
+        G.entities.push(h);
+        respawns.push({ h, at, t: 0 });
+        return h;
+      });
+      hero = localHeroes[0];
     } else {
       hero = new G.Hero(HERO_SPAWN.x, HERO_SPAWN.y, heroDef);
       G.entities.push(hero, ...DUMMY_SPOTS.map(p => new G.AlgoxDummy(p.x, p.y)));
@@ -77,16 +92,16 @@
       return { x: b.x + (team === G.TEAM.PLAYER ? 110 : -110), y: b.y + 40 };
     }
 
-    // Single player: the CPU hero holds the east. Local multiplayer: the second player does. The sandbox
-    // enemy has no builder: give it a barracks in its front-middle base so squads have a foe.
+    // Single player: the CPU hero holds the east. The sandbox enemy has no builder: give it a barracks in
+    // its front-middle base so squads have a foe.
     let foe = null;
-    if (net) {
+    if (net || local) {
       // Both sides have their players.
-    } else if (single || local) {
+    } else if (single) {
       foe = new G.Hero(FOE_SPAWN.x, FOE_SPAWN.y, G.heroById(east.hero || 'deathwalker'), G.TEAM.ENEMY);
       foe.facing = Math.PI;
       G.entities.push(foe);
-      if (single) G.ai.start(foe, cfg.difficulty, FOE_SPAWN);
+      G.ai.start(foe, cfg.difficulty, FOE_SPAWN);
     } else {
       G.addBuilding(enemyFront, enemyFront.slots[4], 'barracks', G.TEAM.ENEMY);
     }
@@ -95,10 +110,15 @@
 
     G.render3d.init(canvas);
 
+    // Split-screen labels: the army, numbered when it has more than one player ("West 2").
+    const localLabel = r => {
+      const army = roster.filter(o => o.side === r.side);
+      return (r.side === 'east' ? 'East' : 'West') + (army.length > 1 ? ' ' + (army.indexOf(r) + 1) : '');
+    };
     const players = local
-      ? [[hero, west, 'West'], [foe, east, 'East']].map(([h, side, label]) => {
-          const mkb = side.gamepad === 'mkb';
-          const pad = G.makePad(mkb ? -1 : side.gamepad, false);
+      ? localHeroes.map((h, i) => {
+          const r = roster[i], label = localLabel(r), mkb = r.gamepad === 'mkb';
+          const pad = G.makePad(mkb ? -1 : r.gamepad, false);
           const p = { hero: h, pad, cam: G.makeCamera(pad, mkb), keyboard: mkb, scheme: mkb ? 'mkb' : 'pad', label, moveMarker: null, padWalking: false, pendingCast: null };
           p.cam.init();
           return p;
@@ -130,7 +150,7 @@
         el.querySelector('.detail').textContent = `${army(winner)} Army wins: the ${army(winner === G.TEAM.PLAYER ? G.TEAM.ENEMY : G.TEAM.PLAYER)} Army's Command Center has fallen.`;
         el.querySelector('button').textContent = 'Back to menu';
       } else if (local) {
-        // Two players: name the winning army instead of Victory / Defeat.
+        // Split screen: name the winning army instead of Victory / Defeat.
         el.classList.remove('defeat');
         el.querySelector('.result').textContent = (won ? 'West' : 'East') + ' Army wins';
         el.querySelector('.detail').textContent = `The ${won ? 'East' : 'West'} Army's Command Center has fallen.`;
@@ -147,12 +167,27 @@
       location.hash = 'dev'; location.reload();
     });
 
-    // Split screen: west on the left half, east on the right.
+    // Split screen: the west army on the left half, the east on the right, each half shared out in rows
+    // between that army's players (two a side: four quarters). Divider lines run along the seams.
+    const dividers = document.getElementById('splitDivider');
     function resize() {
-      const W = window.innerWidth, H = window.innerHeight, half = Math.floor(W / 2);
-      if (local) { players[0].cam.resize(half, H, 0, 0); players[1].cam.resize(W - half, H, half, 0); }
-      else G.camera.resize(W, H);
+      const W = window.innerWidth, H = window.innerHeight;
+      if (local) {
+        const cols = [G.TEAM.PLAYER, G.TEAM.ENEMY].map(t => players.filter(p => p.hero.team === t)).filter(c => c.length);
+        const lines = [];
+        cols.forEach((col, c) => {
+          const x0 = Math.floor(W * c / cols.length), x1 = Math.floor(W * (c + 1) / cols.length);
+          if (c) lines.push(`<div class="v" style="left:${x0}px"></div>`);
+          col.forEach((p, r) => {
+            const y0 = Math.floor(H * r / col.length), y1 = Math.floor(H * (r + 1) / col.length);
+            p.cam.resize(x1 - x0, y1 - y0, x0, y0);
+            if (r) lines.push(`<div class="h" style="top:${y0}px;left:${x0}px;width:${x1 - x0}px"></div>`);
+          });
+        });
+        dividers.innerHTML = lines.join('');
+      } else G.camera.resize(W, H);
       G.render3d.resize(W, H);
+      G.hud.layout();
     }
 
     // Local players' input: orders for their heroes.
@@ -213,7 +248,7 @@
     }
 
     // Mouse and keyboard: right-click moves, left-click attacks / builds, QWER cast at the cursor.
-    // In split screen only clicks inside the player's own half count.
+    // In split screen only clicks inside the player's own view count.
     function mouseKeyboard(p) {
       const input = G.input, hero = p.hero, cam = p.cam, menu = p.menu;
       const inView = c => c.x >= cam.x && c.x < cam.x + cam.w && c.y >= cam.y && c.y < cam.y + cam.h;
@@ -369,7 +404,7 @@
         // While the build menu is open, keep its slot highlighted; otherwise the slot under the mouse.
         let hover = p.menu.pending;
         const m = G.input.mouse, c = p.cam;
-        if (!hover && p.keyboard && m.inside && m.x >= c.x && m.x < c.x + c.w) {
+        if (!hover && p.keyboard && m.inside && m.x >= c.x && m.x < c.x + c.w && m.y >= c.y && m.y < c.y + c.h) {
           const mw = c.screenToWorld(m.x - c.x, m.y - c.y);
           hover = G.slotAt(mw.x, mw.y);
         }

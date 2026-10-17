@@ -1,6 +1,6 @@
 // Build menu: pops up at the clicked slot and lets the player pick a building type.
 // G.makeBuildMenu(player) makes one for a player { hero, pad, cam, keyboard, scheme }: split screen gives
-// each player their own, kept inside their half. The keyboard only drives a menu whose player has `keyboard`.
+// each player their own, kept inside their view. The keyboard only drives a menu whose player has `keyboard`.
 (function (G) {
   // `page` opens a submenu instead of building.
   const MAIN = [

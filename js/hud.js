@@ -1,11 +1,11 @@
 // HUD: DOM-based ability bar (Q W E R with cooldown sweeps, a passive pip on the third, the ultimate
 // set apart) plus hero name, HP bar and gold. Hovering an ability shows its description.
-// One panel per player: split screen copies the #hud panel for the second player, one under each half.
+// One panel per player: split screen copies the #hud panel for each further player, one under each view.
 (function (G) {
   let tip;
   let ccBars = [];  // [{team, fill, text}] top-of-screen Command Center health
   let cpuInfo;      // single player: the CPU hero's name, difficulty and health
-  let views = [];   // one per player
+  let views = [];   // one per player: { root, player, update }
 
   // The HUD redraws every frame, but its values rarely change: only touch the DOM when they do (any
   // write invalidates style and layout, even an unchanged one).
@@ -60,6 +60,7 @@
         // Show the tip above this panel.
         const r = root.getBoundingClientRect();
         tip.style.left = (r.left + r.width / 2) + 'px';
+        tip.style.bottom = (window.innerHeight - r.top + 8) + 'px';
       });
       el.addEventListener('mouseleave', () => { hovered = null; tip.hidden = true; });
       bar.appendChild(el);
@@ -117,9 +118,19 @@
           root.removeAttribute('id');
           first.parentNode.insertBefore(root, first.nextSibling);
         }
-        root.dataset.slot = i;
-        return makeView(root, p);
+        return { root, player: p, update: makeView(root, p) };
       });
+      this.layout();
+    },
+
+    // Split screen: each panel sits at the bottom middle of its player's view (see the cameras' rectangles).
+    layout() {
+      if (views.length < 2) return;
+      for (const { root, player: { cam } } of views) {
+        root.style.left = (cam.x + cam.w / 2) + 'px';
+        root.style.bottom = (window.innerHeight - cam.y - cam.h + 10) + 'px';
+        root.style.maxWidth = (cam.w - 24) + 'px';
+      }
     },
 
     update() {
@@ -134,7 +145,7 @@
           (cpu.dead ? 'fallen' : `${Math.ceil(cpu.hp)} / ${cpu.maxHp}`);
         if (cpuInfo.innerHTML !== html) cpuInfo.innerHTML = html;
       }
-      for (const v of views) v();
+      for (const v of views) v.update();
     }
   };
 })(window.Game);
