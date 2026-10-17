@@ -59,6 +59,8 @@
     const fnText = (k, v) => (typeof v === 'function' ? v.toString() : v);
     let s = JSON.stringify([G.HEROES, G.BUILDINGS, G.SQUAD_KINDS, G.RACES], fnText);
     for (const k of Object.keys(G).sort()) if (typeof G[k] === 'function') s += k + G[k].toString();
+    // Ignore whitespace: a copy checked out on Windows (CRLF line endings) is still the same game.
+    s = s.replace(/\s+/g, '');
     let h = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
     return (printCache = (h >>> 0).toString(16));
