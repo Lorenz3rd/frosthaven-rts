@@ -2,14 +2,14 @@
 (function (G) {
   // Starts the match in G.matchConfig (set by the menu). mode 'single': the player against a CPU hero
   // (see ai.js) at cfg.difficulty. mode 'local': two players, split screen, each hero driven by the
-  // controller assigned to that side. mode 'nethost' / 'netclient': a networked 3 vs 3 (see net.js); the
+  // controller assigned to that side (or the mouse and keyboard, for one side). mode 'nethost' / 'netclient': a networked 3 vs 3 (see net.js); the
   // host simulates every hero, a client only mirrors the host's world and sends its player's commands.
   // Anything else is the sandbox: the hero vs. training dummies and a static enemy barracks.
   //
   // Each player is { hero, cam, pad, menu, keyboard, scheme, label, moveMarker, act }. One-player games use
   // G.camera, G.pad and the mouse and keyboard; split screen gives each player their own camera (half
-  // the screen), controller and build menu, and leaves the keyboard and mouse out of it. `act` carries
-  // out the player's orders: straight on the hero, or (network client) as commands to the host.
+  // the screen), controller and build menu; a side assigned 'mkb' plays with the mouse and keyboard in
+  // their half instead (their pad never connects). `act` carries out the player's orders: straight on the hero, or (network client) as commands to the host.
   G.startGame = function () {
     const canvas = document.getElementById('game');
 
@@ -97,8 +97,9 @@
 
     const players = local
       ? [[hero, west, 'West'], [foe, east, 'East']].map(([h, side, label]) => {
-          const pad = G.makePad(side.gamepad, false);
-          const p = { hero: h, pad, cam: G.makeCamera(pad), keyboard: false, scheme: 'pad', label, moveMarker: null, padWalking: false, pendingCast: null };
+          const mkb = side.gamepad === 'mkb';
+          const pad = G.makePad(mkb ? -1 : side.gamepad, false);
+          const p = { hero: h, pad, cam: G.makeCamera(pad, mkb), keyboard: mkb, scheme: mkb ? 'mkb' : 'pad', label, moveMarker: null, padWalking: false, pendingCast: null };
           p.cam.init();
           return p;
         })
@@ -108,7 +109,8 @@
       p.menu = G.makeBuildMenu(p);
     }
     G.players = players;
-    G.buildMenu = players[0].menu;
+    // The menu Esc closes (rather than pausing): the mouse-and-keyboard player's.
+    G.buildMenu = (players.find(p => p.keyboard) || players[0]).menu;
     document.body.classList.toggle('split', local);
 
     // Win/lose: called when a Command Center falls. The world freezes (effects keep playing)
@@ -181,7 +183,7 @@
       if (G.winner !== null) {
         G.updateEffects(dt);
         for (const p of players) p.cam.update(dt, p.hero);
-        // Split screen has no mouse: any controller's A plays again.
+        // Split screen: any controller's A plays again (the mouse can click the button).
         if (local && players.some(p => p.pad.down[G.PAD_BTN.A])) document.querySelector('#gameOver button').click();
         if (netHost) G.net.hostTick();
         return;
@@ -210,21 +212,24 @@
       if (netHost) G.net.hostTick();
     }
 
-    // Mouse and keyboard (one-player games): right-click moves, left-click attacks / builds, QWER cast at the cursor.
+    // Mouse and keyboard: right-click moves, left-click attacks / builds, QWER cast at the cursor.
+    // In split screen only clicks inside the player's own half count.
     function mouseKeyboard(p) {
       const input = G.input, hero = p.hero, cam = p.cam, menu = p.menu;
+      const inView = c => c.x >= cam.x && c.x < cam.x + cam.w && c.y >= cam.y && c.y < cam.y + cam.h;
+      const toWorld = c => cam.screenToWorld(c.x - cam.x, c.y - cam.y);
       const menuUp = menu.isOpen || menu.isDemolish;  // its number hotkeys aren't orders
       // Ability confirm: any click or other key cancels the previewed ability (and still does its own thing).
       const pc = p.pendingCast;
       if (pc && (input.rightClicks.length || input.leftClicks.length || Object.keys(input.pressed).some(k => k !== pc.ab.key))) p.pendingCast = null;
-      for (const c of hero.dead ? [] : input.rightClicks) {
-        const w = cam.screenToWorld(c.x, c.y);
+      for (const c of hero.dead ? [] : input.rightClicks.filter(inView)) {
+        const w = toWorld(c);
         p.act.move(w.x, w.y);
         p.moveMarker = { x: w.x, y: w.y, t: 0 };
       }
       if (input.rightClicks.length) menu.close();
-      for (const c of input.leftClicks) {
-        const w = cam.screenToWorld(c.x, c.y);
+      for (const c of input.leftClicks.filter(inView)) {
+        const w = toWorld(c);
         // Developer mode: left-click any building (either side) for the destroy menu.
         const anyB = G.dev && !hero.dead ? demolishable(hero, w.x, w.y, 0) : null;
         if (anyB) { menu.openDemolish(anyB, c.x, c.y); continue; }
@@ -267,7 +272,7 @@
     // centered, full range straight ahead.
     function aimFor(p, ab, via) {
       const hero = p.hero;
-      if (via === 'mkb') return p.cam.screenToWorld(G.input.mouse.x, G.input.mouse.y);
+      if (via === 'mkb') return p.cam.screenToWorld(G.input.mouse.x - p.cam.x, G.input.mouse.y - p.cam.y);
       const reach = ab.range || 400, m = p.pad.move, tilt = Math.min(1, Math.hypot(m.x, m.y));
       const a = tilt ? Math.atan2(m.y, m.x) : hero.facing, d = tilt ? reach * tilt : reach;
       return { x: hero.x + Math.cos(a) * d, y: hero.y + Math.sin(a) * d };
@@ -363,8 +368,9 @@
       G.render3d.render(players.map(p => {
         // While the build menu is open, keep its slot highlighted; otherwise the slot under the mouse.
         let hover = p.menu.pending;
-        if (!hover && p.keyboard && G.input.mouse.inside) {
-          const mw = p.cam.screenToWorld(G.input.mouse.x, G.input.mouse.y);
+        const m = G.input.mouse, c = p.cam;
+        if (!hover && p.keyboard && m.inside && m.x >= c.x && m.x < c.x + c.w) {
+          const mw = c.screenToWorld(m.x - c.x, m.y - c.y);
           hover = G.slotAt(mw.x, mw.y);
         }
         // Ability confirm: the previewed ability's shape, following the hero and the aim.

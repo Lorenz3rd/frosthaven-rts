@@ -1,7 +1,8 @@
 // Camera: an angled RTS camera looking at a focus point on the ground. Always centered on the hero;
 // zooms with the mouse wheel. World (x, y) maps to Three.js (x, 0, y).
 // G.camera is the main view. Split screen makes one camera per player (G.makeCamera): each covers the
-// screen rectangle (x, y, w, h) and, with `pad` set, zooms with that controller alone.
+// screen rectangle (x, y, w, h) and, with `pad` set, zooms with that controller alone (`wheel`: the mouse
+// wheel too, for the split-screen player on mouse and keyboard).
 (function (G) {
   const PITCH = 55 * Math.PI / 180;  // angle above the ground plane
   const FOV = 32;
@@ -12,8 +13,8 @@
   const tmp = new THREE.Vector3();
   const ndc = new THREE.Vector2();
 
-  G.makeCamera = function (pad) {
-    const cam = { x: 0, y: 0, fx: 0, fy: 0, w: 800, h: 600, dist: 2200, three: null, pad: pad || null };
+  G.makeCamera = function (pad, wheel = !pad) {
+    const cam = { x: 0, y: 0, fx: 0, fy: 0, w: 800, h: 600, dist: 2200, three: null, pad: pad || null, wheel };
 
     cam.init = function () {
       cam.three = new THREE.PerspectiveCamera(FOV, cam.w / cam.h, 10, 20000);
@@ -46,8 +47,8 @@
 
     // The camera is always locked on the hero; only zoom is adjustable.
     cam.update = function (dt, hero) {
-      // A split-screen camera ignores the mouse wheel: its own controller zooms it.
-      if (!cam.pad && G.input.wheel) cam.dist = G.clamp(cam.dist * Math.pow(1.0015, G.input.wheel), MIN_DIST, MAX_DIST);
+      // A split-screen camera ignores the mouse wheel (unless its player is on mouse and keyboard).
+      if (cam.wheel && G.input.wheel) cam.dist = G.clamp(cam.dist * Math.pow(1.0015, G.input.wheel), MIN_DIST, MAX_DIST);
       const pad = cam.pad || (G.controlScheme === 'pad' ? G.pad : null);
       // Controller: LT zooms out, RT zooms in.
       if (pad && pad.connected) {

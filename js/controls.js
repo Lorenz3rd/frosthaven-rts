@@ -73,8 +73,8 @@
   let el, focusIdx = 0;
 
   function buttons() { return Array.from(el.querySelectorAll('button:not([hidden]), select')); }
-  // Split screen (local multiplayer): every player has a controller, so the scheme toggle is hidden and
-  // any player's controller drives the menu.
+  // Split screen (local multiplayer): each player's scheme is fixed (a controller, or the mouse and
+  // keyboard for one of them), so the scheme toggle is hidden and any player's controller drives the menu.
   const split = () => !!G.players && G.players.length > 1;
   // Network games (see net.js) keep running under the menu, have no developer mode and can be left.
   const netGame = () => /^net/.test((G.matchConfig && G.matchConfig.mode) || '');
@@ -85,6 +85,8 @@
     return d;
   }
   const padHelp = ab => `Left stick move · Ⓐ attack nearest · Ⓧ ${ab[0]} · Ⓨ ${ab[1]} · Ⓑ ${ab[2]} · RB ${ab[3]} (aim with the left stick: tilt further to cast further) · L3 (click left stick) call the nearest group to follow · D-pad orders for your groups: ▼ cancel, ◀ guard, ▶ alert, ▲ charge · LB build menu at a slot (stick + Ⓐ to pick, LB to close) · LT/RT zoom · ☰ pause`;
+
+  const mkbHelp = ab => `Right-click move · Left-click attack / build · Q ${ab[0]} · W ${ab[1]} · E ${ab[2]} · R ${ab[3]} (aim with the cursor) · F call the nearest group to follow · orders for your groups: 1 cancel, 2 guard, 3 alert, 4 charge · P or Esc pause`;
 
   function render() {
     el.querySelector('.result').textContent = netGame() ? 'Menu · the battle goes on' : 'Paused';
@@ -97,8 +99,12 @@
       el.querySelector('[data-act="dev"]').textContent = 'Developer mode: ' + (G.dev ? 'On' : 'Off');
       el.querySelector('[data-act="dev"]').classList.toggle('on', G.dev);
       el.querySelector('[data-act="controls"]').hidden = true;
-      el.querySelector('.padState').textContent = G.players.map(p => `${p.label}: ${p.pad.connected ? 'controller connected' : 'controller missing, press a button on it'}`).join(' · ');
-      el.querySelector('.help').innerHTML = padHelp(['ability 1', 'ability 2', 'ability 3', 'ultimate']);
+      el.querySelector('.padState').textContent = G.players.map(p => `${p.label}: ${p.keyboard ? 'mouse & keyboard' : p.pad.connected ? 'controller connected' : 'controller missing, press a button on it'}`).join(' · ');
+      // One mouse-and-keyboard player: help for each player's scheme. Otherwise the shared controller help.
+      const kb = G.players.find(p => p.keyboard), padAb = ['ability 1', 'ability 2', 'ability 3', 'ultimate'];
+      el.querySelector('.help').innerHTML = kb
+        ? G.players.map(p => `<b>${p.label}:</b> ` + (p.keyboard ? mkbHelp(p.hero.def.abilities.map(a => a.name)) : padHelp(padAb))).join('<br><br>')
+        : padHelp(padAb);
       return;
     }
     el.querySelector('[data-act="dev"]').textContent = 'Developer mode: ' + (G.dev ? 'On' : 'Off');
@@ -115,9 +121,7 @@
         `Connection to host: ${route}${l.ping !== null ? ` · ${l.ping} ms` : ''} · smoothing ${l.smoothMs} ms`;
     }
     const ab = G.hero ? G.hero.def.abilities.map(a => a.name) : ['Q', 'W', 'E', 'R'];
-    el.querySelector('.help').innerHTML = G.controlScheme === 'pad'
-      ? padHelp(ab)
-      : `Right-click move · Left-click attack / build · Q ${ab[0]} · W ${ab[1]} · E ${ab[2]} · R ${ab[3]} (aim with the cursor) · F call the nearest group to follow · orders for your groups: 1 cancel, 2 guard, 3 alert, 4 charge · P or Esc pause`;
+    el.querySelector('.help').innerHTML = G.controlScheme === 'pad' ? padHelp(ab) : mkbHelp(ab);
     if (G.confirmCast) el.querySelector('.help').innerHTML += ' · Ability confirm: press an ability to preview it, press it again to cast, anything else cancels';
   }
 

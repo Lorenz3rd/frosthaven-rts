@@ -272,7 +272,8 @@
   const prevButtons = {};  // pad index -> array of pressed flags
   const prevAxis = {};     // pad index -> { x, y } as -1/0/1
 
-  // Which pad index drives each side; null when unassigned.
+  // Which pad index drives each side; MKB for the mouse and keyboard (one side at most); null when unassigned.
+  const MKB = 'mkb';
   const assign = { west: null, east: null };
   // Race/hero picks per side (indices into G.RACES / G.HEROES).
   const picks = {
@@ -386,7 +387,7 @@
     const pads = connectedPads();
     const sig = pads.map(p => p.index + p.id).join('|');
     // Drop assignments for controllers that disconnected.
-    for (const s of SIDES) if (assign[s.key] !== null && !pads.some(p => p.index === assign[s.key])) assign[s.key] = null;
+    for (const s of SIDES) if (assign[s.key] !== null && assign[s.key] !== MKB && !pads.some(p => p.index === assign[s.key])) assign[s.key] = null;
     if (sig !== lastPadSig) { lastPadSig = sig; renderLocal(); }
   }
 
@@ -394,13 +395,15 @@
     const pads = connectedPads();
     for (const s of SIDES) {
       const card = root.querySelector(`.side[data-side="${s.key}"]`);
-      const pad = pads.find(p => p.index === assign[s.key]);
-      card.classList.toggle('joined', !!pad);
-      card.querySelector('.status').textContent = pad ? padName(pad) : 'Press Ⓐ to join';
+      const pad = pads.find(p => p.index === assign[s.key]), mkb = assign[s.key] === MKB;
+      card.classList.toggle('joined', !!pad || mkb);
+      card.querySelector('.pad').textContent = mkb ? '⌨' : '🎮';
+      card.querySelector('.status').textContent = mkb ? 'Mouse & Keyboard' : pad ? padName(pad) : 'Press Ⓐ (or Enter) to join';
       const sel = card.querySelector('select');
       sel.innerHTML = '<option value="">— No controller —</option>' +
+        `<option value="${MKB}">Mouse & Keyboard</option>` +
         pads.map(p => `<option value="${p.index}">${padName(p)}</option>`).join('');
-      sel.value = pad ? String(pad.index) : '';
+      sel.value = mkb ? MKB : pad ? String(pad.index) : '';
     }
     root.querySelector('.padCount').textContent = pads.length
       ? `${pads.length} controller${pads.length > 1 ? 's' : ''} detected`
@@ -429,7 +432,7 @@
       ? 'Pick your race and hero, and the race you will fight. Click ‹ › (or ◀ ▶ on a controller) to change.'
       : single
         ? 'Pick your race and hero, then the CPU’s race, hero and difficulty. Click ‹ › (or ▲ ▼ ◀ ▶ on a controller, Ⓐ to begin).'
-        : '▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when both are ready.';
+        : '▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when both are ready. Mouse & keyboard: click ‹ › and Lock in, then Begin.';
     for (const s of SIDES) {
       const pk = picks[s.key];
       const race = G.RACES[pk.race];
@@ -439,7 +442,7 @@
       card.querySelector('.label').textContent = dev || single ? (s.key === 'west' ? 'Your Army' : single ? 'CPU Army' : 'Enemy Army') : s.label;
       card.querySelector('.who').textContent = dev || single
         ? (s.key === 'west' ? 'Mouse & keyboard' : single ? 'Computer opponent' : 'Training opponent')
-        : pad ? padName(pad) : 'Controller disconnected';
+        : assign[s.key] === MKB ? 'Mouse & keyboard' : pad ? padName(pad) : 'Controller disconnected';
       card.querySelector('.race .val').textContent = race.name;
       card.querySelector('.race .val').style.color = race.color;
       card.querySelector('.race .desc').textContent = race.desc;
@@ -819,8 +822,8 @@
     root.querySelector('#beginLocal').addEventListener('click', beginLocal);
     for (const s of SIDES) {
       root.querySelector(`.side[data-side="${s.key}"] select`).addEventListener('change', e => {
-        const v = e.target.value === '' ? null : Number(e.target.value);
-        // A controller can only drive one side.
+        const v = e.target.value === '' ? null : e.target.value === MKB ? MKB : Number(e.target.value);
+        // A controller (or the mouse and keyboard) can only drive one side.
         for (const o of SIDES) if (o.key !== s.key && assign[o.key] === v) assign[o.key] = null;
         assign[s.key] = v;
         renderLocal();
@@ -841,7 +844,12 @@
     }
     window.addEventListener('gamepadconnected', () => { if (screen === 'local') renderLocal(); });
     window.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && screen === 'lobby') return;   // leaving a room takes the Leave button
+      if (e.key === 'Escape' && screen === 'lobby') return;
+      // Local multiplayer: Enter claims the first free side for the mouse and keyboard.
+      if (e.key === 'Enter' && screen === 'local' && !SIDES.some(s => assign[s.key] === MKB) && !(e.target instanceof HTMLSelectElement)) {
+        const free = SIDES.find(s => assign[s.key] === null);
+        if (free) { assign[free.key] = MKB; renderLocal(); e.preventDefault(); return; }
+      }   // leaving a room takes the Leave button
       if (e.key === 'Escape' && screen !== 'home') show(screen === 'select' && selectMode === 'local' ? 'local' : 'home');
       if (screen === 'home' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { moveFocus(e.key === 'ArrowDown' ? 1 : -1); e.preventDefault(); }
     });

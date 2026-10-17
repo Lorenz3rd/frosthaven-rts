@@ -52,10 +52,9 @@
       canvas.addEventListener('contextmenu', e => e.preventDefault());
       canvas.addEventListener('mousedown', e => {
         const w = pointerWorld(e);
-        // Split screen: nobody plays with the mouse.
-        if (e.button === 2 && G.players.length === 1) {
-          G.players[0].act.move(w.x, w.y);
-        }
+        // Right-click moves the mouse-and-keyboard player's hero (split screen: only if a side has the mouse).
+        const p = G.players.length === 1 ? G.players[0] : G.players.find(pl => pl.keyboard);
+        if (e.button === 2 && p) p.act.move(w.x, w.y);
       });
     },
 
