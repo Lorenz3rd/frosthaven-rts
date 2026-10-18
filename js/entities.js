@@ -7,6 +7,14 @@
   G.deathListeners = [];   // fn(entity) called whenever an entity dies
   const POISON_HERO = 10, POISON_UNIT = 2;   // extra damage per hit on a poisoned target
 
+  // Ranged attacks (shots, projectiles, beams, waves) land inside G.asRanged, so a Stormspeaker's
+  // storm shield can stop the damage they deal (see G.soakRanged in squads.js).
+  let rangedDepth = 0;
+  G.asRanged = function (fn) {
+    rangedDepth++;
+    try { return fn(); } finally { rangedDepth--; }
+  };
+
   class Entity {
     constructor(x, y, r, maxHp, team) {
       this.x = x; this.y = y; this.r = r;
@@ -53,6 +61,8 @@
     }
     takeDamage(amount, src) {
       if (this.dead || this.untargetable) return 0;
+      // (Burns, bounced-back hits and blasts set off by a ranged hit aren't ranged attacks themselves.)
+      if (rangedDepth && this.team !== G.TEAM.NEUTRAL && !(src && (src.dot || src.reflect || src.blast)) && (amount = G.soakRanged(this, amount)) <= 0) return 0;
       // Poisoned (Blinkblade): every hit from a hero or a soldier lands harder.
       if (this.marks.poison && src && !src.dot) amount += src.hero ? POISON_HERO : src.unit ? POISON_UNIT : 0;
       amount *= 1 - this.armor();
@@ -344,7 +354,7 @@
         p.vx = dx / d * p.speed; p.vy = dy / d * p.speed;
         if (d <= p.speed * dt + (t.r || 0) * 0.6) {
           p.dead = true;
-          if (G.canShoot(p.ox, p.oy, t)) p.onHit(t, p);
+          if (G.canShoot(p.ox, p.oy, t)) G.asRanged(() => p.onHit(t, p));
           G.burst(t.x, t.y, p.color, 10, 140);
           continue;
         }
@@ -362,7 +372,7 @@
         if (p.hit.has(e) || !G.canShoot(p.ox, p.oy, e)) continue;
         if (G.dist(p.x, p.y, e.x, e.y) < p.r + e.r) {
           p.hit.add(e);
-          p.onHit(e, p);
+          G.asRanged(() => p.onHit(e, p));
           G.burst(p.x, p.y, p.color, 14, 160);
           if (!p.pierce) { p.dead = true; break; }
         }

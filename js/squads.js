@@ -12,6 +12,14 @@
   //   standing to fight (see Soldier.ride). guns: secondary weapons (see Soldier.fireGuns).
   //   pick: 'healthiest' aims the main weapon at the healthiest hostile in range. barH: hp bar height.
   //   mass: how hard it shoves other soldiers when bodies collide (default 1).
+  // Special troops (one race each, see G.RACES[].special) add their own traits:
+  //   targets: 'buildings' never picks anything else. desc: a line for the build menu.
+  //   wreck: { kind, count } spawns that many of that kind where it falls. ward: storm shield (see stormspeak).
+  //   reflect: share of each hit taken bounced back at the attacker. chill: attackers' attack speed
+  //   multiplier and how long it lasts. surge: attacks with a rolling wave (see surge). carapace: a shell
+  //   soaking `hp` damage first; it won't attack until the shell breaks, then moves at `speed` and hits
+  //   everything around it. deathBlast: explodes on death. burrow: travels underground, untouchable,
+  //   until within `surface` of the building it goes for (see burrowStep).
   const INFANTRY_SPEED = 99;       // 165 - 40%
   const SQUAD_KINDS = {
     // Infantry
@@ -37,6 +45,25 @@
       charge: true, mass: 4, resist: { caster: 0.7 } },
     warMachine: { name: 'War Machine', bounty: 50, cols: 1, rows: 1, spacing: 0, r: 42, hp: 700, damage: 80, range: G.m(15), cooldown: 3.0, speed: 50, barH: 150,
       splash: G.m(1), shot: 'shell', pick: 'healthiest', mass: 10, guns: { count: 2, damage: 5, cooldown: 0.75, range: G.m(8) } },
+    // Special: Human
+    ram: { name: 'Battering Ram', bounty: 35, cols: 1, rows: 1, spacing: 0, r: 34, hp: 700, damage: 150, range: G.m(1.5), cooldown: 1.5, speed: 110, barH: 110,
+      targets: 'buildings', mass: 10, wreck: { kind: 'infantry', count: 4 }, desc: 'Buildings only · breaks into 4 Grunts' },
+    longbow: { name: 'Longbowmen', bounty: 3, cols: 5, rows: 1, spacing: 44, r: 11, hp: 55, damage: 10, range: G.m(22), cooldown: 2.0, speed: 80, desc: '22 m range' },
+    // Special: Algox
+    stormspeaker: { name: 'Stormspeakers', bounty: 20, role: 'stormspeaker', cols: 2, rows: 1, spacing: 70, r: 13, hp: 125, damage: 0, range: G.m(4), cooldown: 1, speed: 110, barH: 80,
+      ward: { r: G.m(7), hp: 400, regrow: 8 }, desc: 'Storm shield over allies stops ranged attacks' },
+    icespeaker: { name: 'Icespeakers', bounty: 12, cols: 3, rows: 1, spacing: 60, r: 15, hp: 500, damage: 2, range: G.m(0.5), cooldown: 1.4, speed: 110, barH: 86,
+      targets: 'buildings', reflect: 0.2, chill: { atk: -0.4, dur: 4 }, desc: 'Buildings only · hitting one hurts and chills' },
+    // Special: Lurker
+    wavethrower: { name: 'Wavethrowers', bounty: 12, cols: 4, rows: 1, spacing: 48, r: 12, hp: 150, damage: 25, range: G.m(8), cooldown: 3.0, speed: 99,
+      surge: { width: G.m(1.5), len: G.m(12), speed: G.m(3), push: G.m(2) }, desc: 'Waves wash foes back 2 m' },
+    clawcrusher: { name: 'Clawcrushers', bounty: 12, cols: 3, rows: 1, spacing: 62, r: 16, hp: 110, damage: 30, range: G.m(0.5), cooldown: 2.0, speed: 90, barH: 86,
+      targets: 'buildings', carapace: { hp: 250, speed: 130 }, desc: 'Buildings only · enraged once its shell breaks' },
+    // Special: Unfettered
+    ruinedMachine: { name: 'Ruined Machines', bounty: 3, cols: 3, rows: 2, spacing: 44, r: 11, hp: 80, damage: 3, range: G.m(0.5), cooldown: 1.0, speed: INFANTRY_SPEED,
+      deathBlast: { r: G.m(1.5), damage: 50 }, desc: 'Explode when destroyed' },
+    burrowingBlade: { name: 'Burrowing Blades', bounty: 12, cols: 4, rows: 1, spacing: 50, r: 13, hp: 200, damage: 3, range: G.m(0.5), cooldown: 0.3, speed: 80,
+      targets: 'buildings', burrow: { surface: G.m(4) }, desc: 'Buildings only · tunnels up to its target' },
     // Allies: a single unit, 1.5x the size of a soldier. `role` gives support allies their own brain
     // (see Squad.updateSupport); `prefer: 'buildings'` makes a fighter pick buildings before anything else.
     engineer: { name: 'Engineer', bounty: 12, ally: true, role: 'engineer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 200, damage: 0, range: 20, cooldown: 0.5, speed: INFANTRY_SPEED },
@@ -101,8 +128,12 @@
   const BLOCK_AHEAD = G.m(1.5);    // charging melee: a hostile this close ahead (past its reach) blocks it
   const BLOCK_LANE = G.m(1);       // ...when this close to its line (besides both bodies)
   const SUMMON_LEASH = 900;        // summons only fight foes this close to their summoner
+  const DIG_TIME = 0.8;            // burrowing: seconds to dig in (it stands still, still hittable)
+  const REBURROW = 2;              // ...and it digs back in once its building is over `surface` x this away
+  const SURFACE_PAUSE = 0.5;       // seconds after popping up before its first strike
 
   G.squads = [];
+  let wards = [];                  // Stormspeakers with their storm shield up, refreshed every step
   // Soldiers under a hero's command (any number of groups) live in hero.followers; see G.commandFollow.
 
   class Soldier extends G.Entity {
@@ -120,6 +151,9 @@
       this.mass = k.mass || 1;
       if (k.charge) { this.heading = 0; this.overrun = 0; this.passSide = 0; this.stuck = 0; this.rideFrom = null; }
       if (k.guns) { this.aim = 0; this.gunCd = Array.from({ length: k.guns.count }, (_, i) => i * k.guns.cooldown / k.guns.count); }
+      if (k.ward) { this.ward = k.ward.hp; this.wardT = 0; }
+      if (k.carapace) this.carapace = k.carapace.hp;
+      if (k.burrow) { this.burrowed = false; this.digIn = DIG_TIME; }   // digs in right where it's trained
       this.cd = Math.random() * 0.5;
       this.swing = 0;              // 1 -> 0 over an attack animation
       this.facing = 0;
@@ -140,24 +174,44 @@
       this.cd = Math.max(0, this.cd - dt * (this.haste > 0 ? OFFICER_HASTE : 1) * this.buffMul('atk'));
       this.haste = Math.max(0, this.haste - dt);
     }
+    // Shells soak hits first; Icespeakers bite back at whoever hits them.
+    takeDamage(amount, src) {
+      if (this.carapace > 0 && !this.dead && !this.untargetable && amount > 0) {
+        const soak = Math.min(this.carapace, amount);
+        this.carapace -= soak; amount -= soak; this.flash = 0.12;
+        G.floaters.push({ x: this.x + (Math.random() - 0.5) * 16, y: this.y - this.r, text: String(Math.round(soak)), t: 0, color: '#8fe0e8' });
+        if (this.carapace <= 0) crack(this);
+        if (amount <= 0) return soak;
+      }
+      const dealt = super.takeDamage(amount, src);
+      const k = SQUAD_KINDS[this.kind];
+      if ((k.reflect || k.chill) && src && !src.dot && !src.reflect) iceBite(this, k, dealt, src.by || src.hero);
+      return dealt;
+    }
     die(src) {
       super.die(src);
-      G.burst(this.x, this.y, SQUAD_KINDS[this.kind].summon ? '#cfe8d0' : '#a33a2a', 10, 120);
-      G.dropCoins(this.x, this.y, SQUAD_KINDS[this.kind].bounty);
+      const k = SQUAD_KINDS[this.kind];
+      G.burst(this.x, this.y, k.summon ? '#cfe8d0' : '#a33a2a', 10, 120);
+      G.dropCoins(this.x, this.y, k.bounty);
+      if (k.deathBlast) blast(this, k.deathBlast);
+      if (k.wreck) wreck(this, k.wreck);
     }
 
     // Step toward (tx, ty), stopping `stop` short. Returns true when arrived.
-    // Walls in the way: head for a gate (or around the wall) first; see G.steer.
+    // Walls in the way: head for a gate (or around the wall) first; see G.steer. Burrowers go under.
     walk(tx, ty, stop, dt, speedMul = 1) {
       let dx = tx - this.x, dy = ty - this.y, d = Math.hypot(dx, dy);
       if (d <= stop) return true;
-      const via = G.steer(this, tx, ty);
+      if (this.digIn > 0) return false;  // digging in
+      const via = !this.burrowed && G.steer(this, tx, ty);
       if (via && !via.wall) { dx = via.x - this.x; dy = via.y - this.y; d = Math.hypot(dx, dy) || 1; stop = 0; }
       const step = Math.min(d - stop, this.speed * this.speedMul * speedMul * dt);
       if (step <= 0) return false;  // stunned or rooted
       this.facing = Math.atan2(dy, dx);
       this.x += (dx / d) * step; this.y += (dy / d) * step;
       this.moving = true;
+      // The earth heaves over a burrower: a trail of kicked-up dirt.
+      if (this.burrowed && Math.random() < dt * 6) G.particles.push({ x: this.x, y: this.y, vx: (Math.random() - 0.5) * 60, vy: (Math.random() - 0.5) * 60, life: 0.6, t: 0, color: '#5a4630', size: 3 });
       return false;
     }
 
@@ -167,41 +221,50 @@
       this.tickCooldown(dt);
       this.swing = Math.max(0, this.swing - dt * 2.5);
       this.moving = false;
+      const k = SQUAD_KINDS[this.kind];
+      if (k.ward && this.ward <= 0 && (this.wardT -= dt) <= 0) {
+        this.ward = k.ward.hp;   // the storm gathers again
+        G.addFx('ring', { x: this.x, y: this.y, r0: 20, r1: k.ward.r, dur: 0.6, color: 0xbfd8ff });
+      }
+      if (k.burrow) burrowStep(this, k.burrow, dt);
       // Movement and attacks are driven by the squad (see Squad.update).
     }
 
     attack(foe, dt) {
       // A foe behind an enemy wall: break the wall first (ranged soldiers shoot over it if in reach).
-      const via = G.dist(this.x, this.y, foe.x, foe.y) > this.r + foe.r + this.attackRange && G.steer(this, foe.x, foe.y);
+      const via = !this.burrowed && G.dist(this.x, this.y, foe.x, foe.y) > this.r + foe.r + this.attackRange && G.steer(this, foe.x, foe.y);
       if (via && via.wall) foe = via.wall;
+      // Close in, then strike from anywhere in reach: a body being jostled by a crowd (foes shoving
+      // into a ram) keeps getting nudged off the exact spot it walked to.
       const reach = this.r + foe.r + this.attackRange;
-      if (!this.walk(foe.x, foe.y, reach - 2, dt)) return;
+      if (!this.walk(foe.x, foe.y, reach - 2, dt) && G.dist(this.x, this.y, foe.x, foe.y) > reach) return;
       this.strike(foe);
     }
 
     // Swing or loose a shot at `foe` if it is in reach and the cooldown is ready.
     strike(foe) {
       this.facing = Math.atan2(foe.y - this.y, foe.x - this.x);
-      if (this.cd > 0 || this.stunned) return;
+      if (this.cd > 0 || this.stunned || this.burrowed || this.digIn > 0 || this.carapace > 0) return;
       if (this.ranged && !G.canShoot(this.x, this.y, foe)) return;  // blocked by a storm field
       this.cd = this.attackCooldown * (0.9 + Math.random() * 0.2);
       this.swing = 1;
-      const hpDmg = SQUAD_KINDS[this.kind].hpDamage;
-      const base = hpDmg ? Math.max(this.damage, this.hp * hpDmg * G.bonusOf(this.team).troopDmg) : this.damage;
+      const k = SQUAD_KINDS[this.kind];
+      const base = k.hpDamage ? Math.max(this.damage, this.hp * k.hpDamage * G.bonusOf(this.team).troopDmg) : this.damage;
       const dmg = base * this.buffMul('dmg') * (0.85 + Math.random() * 0.3);
       if (!this.ranged) {
-        foe.takeDamage(dmg * G.kindMul(this.kind, foe), { unit: true });
+        if (k.carapace) { crush(this, dmg); return; }
+        foe.takeDamage(dmg * G.kindMul(this.kind, foe), { unit: true, by: this });
         if (this.cleave) {
           for (const e of G.foesInRadius(this.team, foe.x, foe.y, this.cleave))
-            if (e !== foe) e.takeDamage(dmg * 0.6, { unit: true });
+            if (e !== foe) e.takeDamage(dmg * 0.6, { unit: true, by: this });
           G.addFx('ring', { x: foe.x, y: foe.y, r0: 10, r1: this.cleave, dur: 0.35, color: 0xcfe8d0 });
         }
         return;
       }
+      if (k.surge) { surge(this, foe, dmg, k.surge); return; }
       // Loose a shot on the tower shot system: it homes on the foe and hits on arrival (strengths and
       // splash are applied there, see towers.js). Demolitionists fire rockets: faster and nearly flat.
       // Casters hurl slow orbs; a war machine lobs heavy shells.
-      const k = SQUAD_KINDS[this.kind];
       const shot = this.kind === 'demolitionist' ? 'rocket' : k.shot || 'arrow';
       const speed = { rocket: ROCKET_SPEED, orb: ORB_SPEED, shell: SHELL_SPEED }[shot] || ARROW_SPEED;
       const arc = { rocket: 0.02, orb: 0.08, shell: 0.3 }[shot] ?? 0.15;
@@ -211,7 +274,7 @@
     fire(foe, shot, damage, speed, arc, splash, h0, ox = 0, oy = 0) {
       const x0 = this.x + ox, y0 = this.y + oy, d = G.dist(x0, y0, foe.x, foe.y);
       G.shots.push({
-        shot, team: this.team, kind: this.kind, damage, splash, target: foe, tx: foe.x, ty: foe.y,
+        shot, team: this.team, kind: this.kind, from: this, damage, splash, target: foe, tx: foe.x, ty: foe.y,
         x0, y0, h0, t: 0, dur: Math.max(0.2, d / speed), arc: d * arc, x: x0, y: y0, h: h0
       });
     }
@@ -268,7 +331,7 @@
       }
       if (this.stunned) return;
       for (let i = 0; i < gn.count; i++) {
-        if ((this.gunCd[i] -= dt) > 0) continue;
+        if ((this.gunCd[i] -= dt * this.buffMul('atk')) > 0) continue;
         const foe = nearest(hostiles.filter(e => G.canShoot(this.x, this.y, e)), this.x, this.y, this.r + gn.range);
         if (!foe) { this.gunCd[i] = 0.2; continue; }
         this.gunCd[i] = gn.cooldown * (0.9 + Math.random() * 0.2);
@@ -281,7 +344,7 @@
   }
   G.Soldier = Soldier;
 
-  // Everything a squad of `team` may attack: heroes, soldiers, buildings. Never neutral beasts.
+  // Everything a squad of `team` may attack: heroes, soldiers, buildings. Never neutral beasts or burrowers.
   // While squads update, each team's list is built once per step and shared (see G.updateSquads);
   // callers skip the ones that fall meanwhile, and none may change the list.
   let hostileCache = null;
@@ -290,7 +353,7 @@
     const out = [];
     if (hostileCache) hostileCache[team] = out;
     for (const e of G.entities)
-      if (!e.dead && e.team !== team && e.team !== G.TEAM.NEUTRAL && !e.invisible && !(G.dev && e instanceof G.Hero)) out.push(e);
+      if (!e.dead && e.team !== team && e.team !== G.TEAM.NEUTRAL && !e.invisible && !e.burrowed && !(G.dev && e instanceof G.Hero)) out.push(e);
     for (const b of G.buildingList())
       if (!b.dead && b.team !== team) out.push(b);
     return out;
@@ -307,11 +370,12 @@
   }
 
   class Squad {
-    constructor(x, y, team, facing, kind = 'infantry') {
-      const k = SQUAD_KINDS[kind];
+    // count: soldiers in it, when not a full formation of its kind (a ram's crew).
+    constructor(x, y, team, facing, kind = 'infantry', count = 0) {
+      const k = SQUAD_KINDS[kind], n = count || k.cols * k.rows;
       this.team = team;
       this.kind = kind;
-      this.cols = k.cols; this.rows = k.rows; this.spacing = k.spacing;
+      this.cols = Math.min(k.cols, n); this.rows = Math.ceil(n / this.cols); this.spacing = k.spacing;
       // Ranged squads stop and shoot from range instead of closing to melee.
       this.engageRange = Math.max(ENGAGE_RANGE, k.range + 120);
       this.leash = Math.max(LEASH, k.range + 160);
@@ -327,11 +391,11 @@
       this.clock = 0;
       // Messy squads (creatures): each slot sits off its place in the block and drifts about it.
       this.messy = k.messy || 0;
-      this.jitter = Array.from({ length: k.cols * k.rows }, () => ({
+      this.jitter = Array.from({ length: n }, () => ({
         x: (Math.random() - 0.5) * 2 * this.messy, y: (Math.random() - 0.5) * 2 * this.messy, ph: Math.random() * 10, rate: 0.4 + Math.random() * 0.5
       }));
       this.soldiers = [];
-      for (let i = 0; i < this.cols * this.rows; i++) {
+      for (let i = 0; i < n; i++) {
         const o = this.slotPos(i);
         const s = new Soldier(o.x, o.y, team, this, kind);
         s.facing = facing;
@@ -366,19 +430,26 @@
       const cx = live.reduce((a, s) => a + s.x, 0) / live.length;
       const cy = live.reduce((a, s) => a + s.y, 0) / live.length;
       // Ranged squads don't pick targets they can't shoot (inside a storm field).
-      const ranged = SQUAD_KINDS[this.kind].range > MELEE_MAX;
+      const k = SQUAD_KINDS[this.kind], ranged = k.range > MELEE_MAX;
       let pool = G.hostilesOf(this.team).filter(f => !ranged || G.canShoot(cx, cy, f));
       const boss = this.summoner;
       if (boss) {
         // Summons fight the nearest foe (beasts included) and never stray far from their master.
         pool = G.foesOf(this.team).filter(f => G.dist(f.x, f.y, boss.x, boss.y) < SUMMON_LEASH);
       }
+      // Building-only troops never look at anything else. Burrowers tunnel under walls, so they pass
+      // wall segments by while any other building stands.
+      if (k.targets === 'buildings') {
+        pool = pool.filter(f => !(f instanceof G.Entity));
+        const solid = k.burrow ? pool.filter(f => !G.BUILDINGS[f.type].segment) : [];
+        if (solid.length) pool = solid;
+      }
       // Demolitionists go for buildings first and only fall back to units when none are left.
       const buildings = this.prefer === 'buildings' ? pool.filter(f => !(f instanceof G.Entity)) : [];
       this.target = nearest(buildings.length ? buildings : pool, cx, cy);
       // A target behind an enemy wall the squad can't shoot over from outside it: the wall comes first.
-      const t = this.target, via = t && G.steer({ x: cx, y: cy, r: live[0].r, team: this.team }, t.x, t.y);
-      if (via && via.wall && (!ranged || G.dist(via.wall.x, via.wall.y, t.x, t.y) - t.r > SQUAD_KINDS[this.kind].range)) this.target = via.wall;
+      const t = this.target, via = t && !k.burrow && G.steer({ x: cx, y: cy, r: live[0].r, team: this.team }, t.x, t.y);
+      if (via && via.wall && (!ranged || G.dist(via.wall.x, via.wall.y, t.x, t.y) - t.r > k.range)) this.target = via.wall;
       const was = this.engaged;
       this.engaged = !!this.target && G.dist(cx, cy, this.target.x, this.target.y) - this.target.r < this.engageRange;
       if (was && !this.engaged) {
@@ -390,6 +461,7 @@
     update(dt) {
       const live = this.formation;
       if (!live.length) return;
+      if (this.role === 'stormspeaker') { stormspeak(this, live, dt); return; }
       if (this.role) { this.updateSupport(live[0], dt); return; }
       this.clock += dt;
       if (SQUAD_KINDS[this.kind].absorb) for (const s of live) absorb(s);
@@ -403,13 +475,15 @@
       if (this.engaged && this.target && !this.target.dead) {
         // Melee: each soldier fights the nearest hostile near the squad's target.
         // The candidate list is only built on a step where some soldier actually re-picks.
+        // Demolitionists and building-only troops stick to the building the squad picked.
         let foes = null;
+        const onlyTarget = (this.prefer === 'buildings' || k.targets === 'buildings') && !(this.target instanceof G.Entity);
         for (const s of live) {
-          if (!s.foe || s.foe.dead || Math.random() < dt * (k.charge ? 0.3 : 2)) {
+          if (onlyTarget) s.foe = this.target;
+          else if (!s.foe || s.foe.dead || Math.random() < dt * (k.charge ? 0.3 : 2)) {
             if (!foes) foes = G.hostilesOf(this.team).filter(f => G.dist(f.x, f.y, this.target.x, this.target.y) < this.leash);
             s.foe = nearest(foes, s.x, s.y) || this.target;
           }
-          if (this.prefer === 'buildings' && !(this.target instanceof G.Entity)) s.foe = this.target;
           if (k.charge) s.ride(s.foe, dt);
           // The war machine only closes to main-gun range; fireGuns does the shooting.
           else if (k.guns) s.walk(s.foe.x, s.foe.y, s.r + s.foe.r + s.attackRange - 10, dt);
@@ -430,7 +504,8 @@
           // March: turn the block toward the target and advance the anchor,
           // slowed down whenever the formation is stretched so the group stays together.
           // Walls in the way: the block makes for a gate too, so it files through instead of piling up.
-          const via = G.steer({ x: this.x, y: this.y, r: 0, team: this.team }, this.target.x, this.target.y);
+          // (Burrowers go straight under.)
+          const via = !k.burrow && G.steer({ x: this.x, y: this.y, r: 0, team: this.team }, this.target.x, this.target.y);
           const gx = via && !via.wall ? via.x : this.target.x, gy = via && !via.wall ? via.y : this.target.y;
           const dx = gx - this.x, dy = gy - this.y;
           const want = Math.atan2(dy, dx);
@@ -510,7 +585,7 @@
       // Officer: the nearest friendly group of regular soldiers, by the group's center.
       let best = null, bd = Infinity;
       for (const sq of G.squads) {
-        if (sq.team !== this.team || sq.summoner || SQUAD_KINDS[sq.kind].ally) continue;
+        if (sq.team !== this.team || sq.summoner || sq.role || SQUAD_KINDS[sq.kind].ally) continue;
         const live = sq.formation;
         if (!live.length) continue;
         const x = live.reduce((a, e) => a + e.x, 0) / live.length, y = live.reduce((a, e) => a + e.y, 0) / live.length;
@@ -521,6 +596,154 @@
     }
   }
   G.Squad = Squad;
+
+  // ---- Special troops ----
+
+  // Stormspeakers: each keeps within reach (s.attackRange) of a friendly group or hero, the nearest one
+  // first; a second Stormspeaker covers the next nearest group when there is one close by, so their
+  // shields spread out. With nobody to cover they wait by their barracks. Shields: see G.soakRanged.
+  const SPREAD = G.m(20);          // a second group further off than this isn't worth splitting up for
+  function stormspeak(sq, live, dt) {
+    if ((sq.think -= dt) <= 0) {
+      sq.think = RETHINK;
+      const spots = [];
+      for (const o of G.squads) {
+        if (o.team !== sq.team || o.role || SQUAD_KINDS[o.kind].ally) continue;
+        const m = o.formation;
+        if (m.length) spots.push(centroid(m));
+      }
+      for (const e of G.entities) if (e instanceof G.Hero && e.team === sq.team && !e.dead) spots.push({ x: e.x, y: e.y });
+      sq.spots = spots;
+    }
+    const spots = sq.spots || [];
+    live.forEach((s, i) => {
+      const byDist = spots.slice().sort((a, b) => G.dist(s.x, s.y, a.x, a.y) - G.dist(s.x, s.y, b.x, b.y));
+      let t = byDist[Math.min(i, byDist.length - 1)];
+      if (t && i && G.dist(s.x, s.y, t.x, t.y) > G.dist(s.x, s.y, byDist[0].x, byDist[0].y) + SPREAD) t = byDist[0];
+      if (!t) {
+        if (sq.home && !sq.home.dead) s.walk(sq.home.x, sq.home.y, sq.home.r + s.r + 40 + i * 50, dt);
+        return;
+      }
+      if (s.walk(t.x, t.y, s.attackRange * 0.75, dt)) s.facing = sq.team === G.TEAM.PLAYER ? 0 : Math.PI;
+    });
+  }
+
+  // The friendly storm shield over `e`, or null. Shields cover every friendly unit and hero within
+  // their radius, Stormspeakers included.
+  G.wardOver = function (e) {
+    for (const s of wards)
+      if (s.team === e.team && !s.dead && s.ward > 0 && G.dist(s.x, s.y, e.x, e.y) <= SQUAD_KINDS[s.kind].ward.r) return s;
+    return null;
+  };
+  // A ranged attack about to hurt `e` for `amount`: a storm shield over it takes the whole hit (one
+  // that breaks the shield included). Returns the damage that gets through.
+  G.soakRanged = function (e, amount) {
+    const s = G.wardOver(e);
+    if (!s) return amount;
+    s.ward -= amount;
+    G.floaters.push({ x: e.x, y: e.y - e.r, text: '◈', t: 0, color: '#bfd8ff' });
+    if (s.ward <= 0) {
+      const w = SQUAD_KINDS[s.kind].ward;
+      s.ward = 0; s.wardT = w.regrow;
+      G.burst(s.x, s.y, '#bfd8ff', 40, w.r * 1.6, 120);
+      G.floaters.push({ x: s.x, y: s.y - 40, text: 'Shield broken', t: 0, color: '#bfd8ff' });
+    }
+    return 0;
+  };
+
+  // Icespeaker hit by `who` (a soldier, hero or building; none for an unclaimed hit): a share of the
+  // damage bounces back at a soldier or hero, and whoever struck it is chilled to a slower attack.
+  function iceBite(s, k, dealt, who) {
+    if (!who || who.dead || who.team === s.team) return;
+    if (who instanceof G.Entity) {
+      if (k.reflect && dealt > 0) who.takeDamage(dealt * k.reflect, { reflect: true, color: '#9fdcff' });
+      if (k.chill) { G.addBuff(who, 'cold', k.chill.dur, { atk: k.chill.atk }); G.mark(who, 'cold', k.chill.dur); }
+    } else if (k.chill) {
+      who.cold = Math.max(who.cold || 0, k.chill.dur); who.coldAtk = k.chill.atk;   // towers reload slower (see towers.js)
+    }
+    if (Math.random() < 0.3) G.burst(who.x, who.y, '#bfefff', 6, 90);
+  }
+
+  // Clawcrusher's shell gives way: it gets faster and starts fighting.
+  function crack(s) {
+    s.carapace = 0;
+    s.speed = SQUAD_KINDS[s.kind].carapace.speed;
+    G.burst(s.x, s.y, '#2a6a7a', 24, 200); G.burst(s.x, s.y, '#ff6a40', 12, 140);
+    G.floaters.push({ x: s.x, y: s.y - 40, text: 'Enraged!', t: 0, color: '#ff8a60' });
+  }
+  // Clawcrusher strike: the claw sweeps everything hostile within its reach.
+  function crush(s, dmg) {
+    for (const e of G.hostilesOf(s.team))
+      if (!e.dead && G.dist(s.x, s.y, e.x, e.y) <= s.r + (e.r || 0) + s.attackRange + 4) e.takeDamage(dmg * G.kindMul(s.kind, e), { unit: true, by: s });
+    G.addFx('ring', { x: s.x, y: s.y, r0: s.r, r1: s.r + s.attackRange + 20, dur: 0.3, color: 0xff8a60 });
+  }
+
+  // Ruined Machine: bursts apart, hurting everything hostile close by.
+  function blast(s, b) {
+    G.addFx('ring', { x: s.x, y: s.y, r0: 8, r1: b.r, dur: 0.35, color: 0xffa040 });
+    G.burst(s.x, s.y, '#ffb040', 26, 260); G.burst(s.x, s.y, '#5a5450', 14, 160);
+    for (const e of G.foesInRadius(s.team, s.x, s.y, b.r)) e.takeDamage(b.damage * G.bonusOf(s.team).troopDmg, { unit: true, by: s, blast: true });
+  }
+
+  // Battering Ram: breaks apart, leaving its crew to fight on as a squad of their own. The barracks
+  // waits for them as it would for the ram.
+  function wreck(s, w) {
+    const sq = new Squad(s.x, s.y, s.team, s.facing, w.kind, w.count);
+    sq.home = s.squad.home;
+    if (sq.home && sq.home.squad === s.squad) sq.home.squad = sq;
+    sq.think = 0;
+    G.squads.push(sq);
+    G.addFx('ramWreck', { x: s.x, y: s.y, angle: s.facing, team: s.team, dur: 6 });
+    G.burst(s.x, s.y, '#6a4a2a', 30, 220);
+  }
+
+  // Wavethrower: a wall of water rolls out along the line to its foe, hurting and washing back every
+  // hostile it reaches (each once). Buildings take the hit but don't move. It counts as a ranged attack:
+  // a storm field or storm shield stops it, and the shove with it.
+  function surge(s, foe, dmg, w) {
+    const a = Math.atan2(foe.y - s.y, foe.x - s.x), team = s.team, kind = s.kind;
+    const x0 = s.x + Math.cos(a) * s.r, y0 = s.y + Math.sin(a) * s.r;
+    G.addFx('surge', { x0, y0, x: x0, y: y0, angle: a, width: w.width, len: w.len, speed: w.speed, dur: w.len / w.speed + 0.4, team, hit: new Set(),
+      tick(o) {
+        const c = Math.cos(o.angle), sn = Math.sin(o.angle), front = o.t * o.speed;
+        if (front > o.len) return;
+        o.x = o.x0 + c * front; o.y = o.y0 + sn * front;
+        for (const e of G.hostilesOf(team)) {
+          if (e.dead || e.untargetable || o.hit.has(e)) continue;
+          const rx = e.x - o.x0, ry = e.y - o.y0, along = rx * c + ry * sn, side = -rx * sn + ry * c, r = e.r || 0;
+          if (along < front - 40 - r || along > front + r || Math.abs(side) > o.width / 2 + r) continue;
+          o.hit.add(e);
+          if (!G.canShoot(o.x0, o.y0, e)) continue;
+          const shielded = e instanceof G.Entity && G.wardOver(e);
+          G.asRanged(() => e.takeDamage(dmg * G.kindMul(kind, e), { unit: true, by: s }));
+          if (!shielded && e instanceof G.Entity && !e.dead && !(e instanceof G.Hero && e.dash)) G.push(e, o.angle, w.push, 0.35);
+        }
+      } });
+  }
+
+  // Burrowing Blade: underground (untouchable, under walls, out of every list of targets) until within
+  // `surface` of the building it goes for, then it pops up to attack it. Once that building is far off
+  // again (it fell), it digs back in, standing still for DIG_TIME first.
+  function burrowStep(s, b, dt) {
+    if (s.digIn > 0) {
+      s.untargetable = false;
+      if (Math.random() < dt * 20) G.particles.push({ x: s.x + (Math.random() - 0.5) * 20, y: s.y + (Math.random() - 0.5) * 20, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 120, life: 0.5, t: 0, color: '#6a5438', size: 4 });
+      if ((s.digIn -= dt) <= 0) { s.digIn = 0; s.burrowed = s.untargetable = true; s.knock = null; }
+      return;
+    }
+    const sqT = s.squad && !s.heroFollow && s.squad.target;
+    const t = sqT && !(sqT instanceof G.Entity) && !sqT.dead ? sqT : nearestBuilding(s);
+    const gap = t ? G.dist(s.x, s.y, t.x, t.y) - t.r - s.r : Infinity;
+    if (s.burrowed && gap <= b.surface) {
+      s.burrowed = s.untargetable = false;
+      s.cd = Math.max(s.cd, SURFACE_PAUSE);
+      G.burst(s.x, s.y, '#6a5438', 22, 200); G.burst(s.x, s.y, '#c9d2da', 8, 120);
+    } else if (!s.burrowed && gap > b.surface * REBURROW) s.digIn = DIG_TIME;
+  }
+  function nearestBuilding(s) {
+    const list = G.hostilesOf(s.team).filter(f => !(f instanceof G.Entity) && !G.BUILDINGS[f.type].segment);
+    return nearest(list, s.x, s.y);
+  }
 
   // Bone Ball: each friendly skeleton whose body comes within reach is rolled up into it, raising the
   // ball's max health (up to a cap) and healing it. Its hits scale with its health (see hpDamage).
@@ -722,11 +945,14 @@
     const list = commanded(hero);
     if (!list.length) return;
     // Hostiles are looked up once for the whole command this step, and only if somebody asks.
-    let all = null, units = null;
+    // foes(s): what that soldier may fight (building-only troops: buildings).
+    let all = null, units = null, buildings = null;
     const ctx = {
       dir: hero.team === G.TEAM.PLAYER ? 1 : -1, dt,
       all: () => all || (all = G.hostilesOf(hero.team)),
-      units: () => units || (units = ctx.all().filter(e => e instanceof G.Entity))
+      units: () => units || (units = ctx.all().filter(e => e instanceof G.Entity)),
+      buildings: () => buildings || (buildings = ctx.all().filter(e => !(e instanceof G.Entity))),
+      foes: s => (SQUAD_KINDS[s.kind].targets === 'buildings' ? ctx.buildings() : ctx.all())
     };
     // A charging block sets off once every soldier is in place (or it has waited long enough).
     for (const g of new Set(list.map(s => s.cmdGroup).filter(Boolean))) {
@@ -760,9 +986,10 @@
     guard(s, hero, ctx) {
       const p = s.post;
       if (!s.ranged && !s.squad.role) {
-        // Melee: take on units that come near its spot; let one go once it has left the spot well behind.
+        // Melee: take on units that come near its spot (building-only troops: buildings); let one go
+        // once it has left the spot well behind.
         if (s.foe && (s.foe.dead || G.dist(s.foe.x, s.foe.y, p.x, p.y) - s.foe.r > GUARD_REACH * 1.25)) s.foe = null;
-        if (!s.foe) s.foe = nearest(ctx.units(), p.x, p.y, GUARD_REACH);
+        if (!s.foe) s.foe = nearest(SQUAD_KINDS[s.kind].targets === 'buildings' ? ctx.buildings() : ctx.units(), p.x, p.y, GUARD_REACH);
         if (s.foe) { s.attack(s.foe, ctx.dt); return; }
       }
       hold(s, ctx);
@@ -780,7 +1007,7 @@
       // In the way: the nearest hostile ahead along its line, close by (melee) or in range (ranged).
       const melee = !s.ranged, reach = melee ? s.attackRange + BLOCK_AHEAD : s.attackRange;
       let block = null, bd = Infinity;
-      for (const e of ctx.all()) {
+      for (const e of ctx.foes(s)) {
         if (e.dead || (e.x - s.x) * dir <= 0 || Math.abs(e.y - s.y) > e.r + s.r + BLOCK_LANE) continue;
         const d = G.dist(s.x, s.y, e.x, e.y) - e.r - s.r;
         if (d <= reach && d < bd) { block = e; bd = d; }
@@ -821,7 +1048,7 @@
     const role = s.squad.role;
     if (role) { if (role === 'officer') officerShoot(s); return; }
     if (SQUAD_KINDS[s.kind].guns) { s.fireGuns(ctx.all(), ctx.dt); return; }
-    const foe = nearest(ctx.all(), s.x, s.y, s.attackRange + s.r);
+    const foe = nearest(ctx.foes(s), s.x, s.y, s.attackRange + s.r);
     if (foe) s.strike(foe);
   }
 
@@ -855,8 +1082,8 @@
     hostileCache = null;
     // Bodies don't overlap: soldiers push apart from each other (both teams) and from heroes/beasts,
     // then out of rocks and buildings. Sweep along x: with bodies sorted by x, each one only meets the
-    // few that follow it within reach, instead of every other body on the map.
-    const bodies = G.entities.filter(e => !e.dead).sort((a, b) => a.x - b.x);
+    // few that follow it within reach, instead of every other body on the map. Burrowers pass beneath.
+    const bodies = G.entities.filter(e => !e.dead && !e.burrowed).sort((a, b) => a.x - b.x);
     let maxR = 0;
     for (const e of bodies) if (e.r > maxR) maxR = e.r;
     for (let i = 0; i < bodies.length; i++) {
@@ -877,8 +1104,9 @@
         b.x += dx / d * push * kb; b.y += dy / d * push * kb;
       }
     }
-    for (const e of bodies) if (e instanceof Soldier) G.map.resolve(e);
+    for (const e of G.entities) if (e instanceof Soldier && !e.dead) G.map.resolve(e);
     G.squads = G.squads.filter(sq => sq.alive.length);
     G.entities = G.entities.filter(e => !(e instanceof Soldier && e.dead));
+    wards = G.entities.filter(e => e.ward > 0);
   };
 })(window.Game);

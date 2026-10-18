@@ -42,7 +42,7 @@
   function fire(b, w, t) {
     const d = G.dist(b.x, b.y, t.x, t.y);
     G.shots.push({
-      shot: w.shot, team: b.team, damage: w.damage, bldgMul: w.bldgMul, roll: w.roll, splash: w.splash,
+      shot: w.shot, team: b.team, from: b, damage: w.damage, bldgMul: w.bldgMul, roll: w.roll, splash: w.splash,
       x0: b.x, y0: b.y, h0: w.muzzle, target: w.roll ? null : t, tx: t.x, ty: t.y,
       t: 0, dur: Math.max(0.25, d / w.speed), arc: w.shot === 'boulder' ? d * 0.35 : d * 0.12,
       x: b.x, y: b.y, h: w.muzzle
@@ -56,7 +56,7 @@
     if (!s.roll) {
       // A shot from outside can still be stopped by a storm field the target moved into.
       // Soldiers' shots carry their kind, so troop strengths apply (see G.kindMul).
-      const hit = e => e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1) * G.kindMul(s.kind, e), s.kind ? { unit: true } : undefined);
+      const hit = e => G.asRanged(() => e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1) * G.kindMul(s.kind, e), { unit: !!s.kind, by: s.from }));
       if (s.splash) {
         for (const e of G.hostilesOf(s.team))
           if (G.dist(e.x, e.y, s.tx, s.ty) <= s.splash + (e.r || 0) && G.canShoot(s.x0, s.y0, e)) hit(e);
@@ -86,7 +86,7 @@
       if (r.hits.has(e) || G.dist(s.x, s.y, e.x, e.y) > s.roll.radius + (e.r || 0)) continue;
       if (!G.canShoot(s.x0, s.y0, e)) continue;
       r.hits.add(e);
-      e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1));
+      G.asRanged(() => e.takeDamage(s.damage * (s.bldgMul && !(e instanceof G.Entity) ? s.bldgMul : 1), { by: s.from }));
       s.damage *= s.roll.falloff;
       G.burst(e.x, e.y, '#ffffff', 8, 140);
       if (!(e instanceof G.Entity)) return true;  // buildings stop it dead
@@ -119,7 +119,7 @@
     }
     b.aim = Math.atan2(b.beam.y - b.y, b.beam.x - b.x);
     b.cds[i] = w.cooldown;
-    b.beam.takeDamage(b.beamDmg);
+    G.asRanged(() => b.beam.takeDamage(b.beamDmg, { by: b }));
     b.fired = 1;
     b.beamDmg = Math.min(w.maxDamage, b.beamDmg * w.ramp);
     if (b.beam.dead) b.beam = null;
@@ -129,13 +129,16 @@
   G.updateTowers = function (dt) {
     for (const b of G.buildingList()) {
       const ws = G.weaponsOf(b.type);
+      if (b.cold > 0) b.cold = Math.max(0, b.cold - dt);
       if (!ws.length || b.dead) continue;
       b.fired = Math.max(0, (b.fired || 0) - dt * 1.5);
       // One cooldown per weapon; several weapons start out of step so they don't all fire at once.
+      // A chilled tower (it hit an Icespeaker) reloads slower.
       if (!b.cds) b.cds = ws.map((w, i) => i * 0.15);
+      const reload = dt * (b.cold > 0 ? 1 + b.coldAtk : 1);
       for (let i = 0; i < ws.length; i++) {
         const w = ws[i];
-        if ((b.cds[i] -= dt) > 0) continue;
+        if ((b.cds[i] -= reload) > 0) continue;
         if (w.beam) { beam(b, w, i); continue; }
         const t = pickTarget(b, w);
         if (!t) { b.cds[i] = 0.2; continue; }  // nothing in range: look again soon

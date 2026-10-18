@@ -56,7 +56,7 @@
     // anything of its side inside the base (see G.canShoot). Movement and shots out are unaffected.
     storm: { name: 'Storm Tower', cost: 225, r: 22 * SCALE, field: true },
     // Barracks: `squad` names the unit kind it spawns (see SQUAD_KINDS in squads.js). Grouped in the
-    // build menu as Infantry, Ranged and Mobile. They have BARRACKS_HP.
+    // build menu as Infantry, Ranged, Mobile and Special. They have BARRACKS_HP.
     barracks: { name: 'Grunt Barracks', cost: 75, r: 26 * SCALE, squad: 'infantry', hp: BARRACKS_HP },
     barracksSpear: { name: 'Spearmen Barracks', cost: 100, r: 26 * SCALE, squad: 'spearman', hp: BARRACKS_HP },
     barracksElite: { name: 'Elite Barracks', cost: 150, r: 26 * SCALE, squad: 'elite', hp: BARRACKS_HP },
@@ -67,6 +67,16 @@
     barracksCreature: { name: 'Creature Pens', cost: 125, r: 26 * SCALE, squad: 'creature', hp: BARRACKS_HP },
     barracksMounted: { name: 'Stables', cost: 175, r: 26 * SCALE, squad: 'mounted', hp: BARRACKS_HP },
     barracksWarMachine: { name: 'Siege Works', cost: 400, r: 26 * SCALE, squad: 'warMachine', hp: BARRACKS_HP },
+    // Special: each race's own troops, listed on the build menu's Special page. `race` is the only race
+    // that can build one (see G.RACES[].special).
+    barracksRam: { name: 'Ram Works', race: 'human', cost: 300, r: 26 * SCALE, squad: 'ram', hp: BARRACKS_HP },
+    barracksLongbow: { name: 'Longbow Range', race: 'human', cost: 300, r: 26 * SCALE, squad: 'longbow', hp: BARRACKS_HP },
+    barracksStormspeaker: { name: 'Storm Cairn', race: 'algox', cost: 300, r: 26 * SCALE, squad: 'stormspeaker', hp: BARRACKS_HP },
+    barracksIcespeaker: { name: 'Frost Shrine', race: 'algox', cost: 300, r: 26 * SCALE, squad: 'icespeaker', hp: BARRACKS_HP },
+    barracksWavethrower: { name: 'Tide Pool', race: 'lurker', cost: 300, r: 26 * SCALE, squad: 'wavethrower', hp: BARRACKS_HP },
+    barracksClawcrusher: { name: 'Crusher Den', race: 'lurker', cost: 300, r: 26 * SCALE, squad: 'clawcrusher', hp: BARRACKS_HP },
+    barracksRuinedMachine: { name: 'Scrap Heap', race: 'unfettered', cost: 300, r: 26 * SCALE, squad: 'ruinedMachine', hp: BARRACKS_HP },
+    barracksBurrowingBlade: { name: 'Bore Works', race: 'unfettered', cost: 300, r: 26 * SCALE, squad: 'burrowingBlade', hp: BARRACKS_HP },
     // Allies: barracks that train a single, larger specialist (see SQUAD_KINDS in squads.js).
     allyEngineer: { name: 'Engineer Lodge', cost: 150, r: 19 * SCALE, squad: 'engineer' },
     allyMedic: { name: 'Medic Tent', cost: 175, r: 19 * SCALE, squad: 'medic' },
@@ -143,8 +153,10 @@
 
   // Returns null on success, or a reason string the caller can show.
   // team: who the building is for (defaults to the hero's side; the test menu can build for the enemy).
-  G.buildCheck = function (hero, base, slot, team = hero.team) {
+  G.buildCheck = function (hero, base, slot, team = hero.team, type = null) {
     if (base.team !== null && base.team !== team) return team === hero.team ? 'Enemy base' : 'Not an enemy base';
+    const race = type && G.BUILDINGS[type].race;
+    if (race && race !== G.raceOf(team)) return 'Another race builds that';
     if (slot.building) return 'Slot occupied';
     if (G.dist(hero.x, hero.y, base.x, base.y) > base.r) return 'Hero must be in the base';
     // The hero may stand on the slot; placeBuilding() steps them off it.
@@ -171,7 +183,7 @@
   G.placeBuilding = function (hero, hit, type, team = hero.team) {
     const def = G.BUILDINGS[type];
     if (def.wall) return G.buildWall(hero, hit, team);
-    const reason = G.buildCheck(hero, hit.base, hit.slot, team) || (team === hero.team && !G.dev && hero.gold < def.cost ? 'Not enough gold' : null);
+    const reason = G.buildCheck(hero, hit.base, hit.slot, team, type) || (team === hero.team && !G.dev && hero.gold < def.cost ? 'Not enough gold' : null);
     if (reason) { refuse(hit.slot, reason); return false; }
     G.addBuilding(hit.base, hit.slot, type, team);
     if (team === hero.team && !G.dev) hero.gold -= def.cost;  // TESTING: enemy buildings from the test menu are free

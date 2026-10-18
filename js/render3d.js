@@ -56,6 +56,9 @@
   R.SUMMON_MODELS = {};    // squad kind -> fn(team) -> Group (soldier contract)
   R.FX = {};               // fx kind -> { make(o), update(m, o, time, dt) }
   R.PROJ = {};             // projectile style -> fn(p) -> Object3D
+  // Each race's special troops and their barracks (js/models/special.js): only that race fields them.
+  R.SPECIAL_BUILDINGS = {}; // building type -> fn(slot, base, team)
+  R.SPECIAL_UNITS = {};     // squad kind -> fn(team) -> Group (soldier contract)
 
   // ---------- init ----------
   R.init = function (canvas) {
@@ -1207,7 +1210,7 @@
   // their merged geometry, which lets the instancer (batchModels) draw them all together.
   function buildingModel(slot, base, b) {
     const look = G.BUILDINGS[b.type].look || b.type;
-    const fn = raceModels(b.team).buildings[look] || BUILDING_MODELS[look];
+    const fn = R.SPECIAL_BUILDINGS[look] || raceModels(b.team).buildings[look] || BUILDING_MODELS[look];
     const m = fn(slot, base, b.team);
     const key = 'building:' + G.raceOf(b.team) + ':' + b.type + ':' + b.team;
     return G.kit.mergeStatic(m, animatedParts(m, b), { pieces: true, cacheKey: key });
@@ -1231,10 +1234,10 @@
     return keep;
   }
   function unitModel(e) {
-    const k = G.SQUAD_KINDS[e.kind];
-    const m = k.summon ? R.SUMMON_MODELS[e.kind](e.team) : raceModels(e.team).unit(e.team, e.kind, e.ranged);
+    const k = G.SQUAD_KINDS[e.kind], special = R.SPECIAL_UNITS[e.kind];
+    const m = k.summon ? R.SUMMON_MODELS[e.kind](e.team) : special ? special(e.team) : raceModels(e.team).unit(e.team, e.kind, e.ranged);
     // Units of one kind are built identically, so they share their merged geometry.
-    const key = (k.summon ? 'summon' : G.raceOf(e.team)) + ':' + e.kind + ':' + e.team + ':' + !!e.ranged;
+    const key = (k.summon ? 'summon' : special ? 'special' : G.raceOf(e.team)) + ':' + e.kind + ':' + e.team + ':' + !!e.ranged;
     G.kit.mergeStatic(m, new Set(Object.values(m.userData).filter(v => v && v.isObject3D)), { cacheKey: key });
     // Armies are the bulk of the shadow pass. At RTS zoom a soldier's legs, head or weapon cast a few
     // pixels of shadow, so only the bigger parts (the merged body) cast one.
@@ -1657,13 +1660,20 @@
     const mark = K.glow(0xb28cff, 34, 0.9);
     const burn = K.glow(0xff7a2a, R0 * 3, 0.35);
     const poison = K.glow(0x8fe05a, R0 * 2.6, 0.4);
-    g.add(shield, stun, root, mark, burn, poison);
+    // Chilled (struck an Icespeaker): a frosty haze and a ring of ice shards at its feet.
+    const cold = new THREE.Group();
+    cold.add(K.glow(0xbfefff, R0 * 3, 0.45));
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * Math.PI * 2;
+      K.add(cold, K.g.cone(2.4, 11, 4), K.lit(0xcff4ff), Math.cos(a) * (R0 + 3), 4, Math.sin(a) * (R0 + 3), { rz: Math.cos(a) * -0.5, rx: Math.sin(a) * 0.5, shadow: false });
+    }
+    g.add(shield, stun, root, mark, burn, poison, cold);
     scene.add(g);
-    return { g, shield, shieldMat, stun, root, mark, burn, poison };
+    return { g, shield, shieldMat, stun, root, mark, burn, poison, cold };
   }
   function syncStatus(e) {
     let v = statusViews.get(e);
-    const show = !e.dead && (e.shieldAmt > 0 || e.stunTimer > 0 || e.rootTimer > 0 || (e.marks && (e.marks.shadow || e.marks.poison)) || e.dots.length);
+    const show = !e.dead && !e.burrowed && (e.shieldAmt > 0 || e.stunTimer > 0 || e.rootTimer > 0 || (e.marks && (e.marks.shadow || e.marks.poison || e.marks.cold)) || e.dots.length);
     if (!show) { if (v) v.g.visible = false; return; }
     if (!v) { v = makeStatus(e); statusViews.set(e, v); }
     v.g.visible = true;
@@ -1683,6 +1693,9 @@
     v.poison.visible = !!(e.marks && e.marks.poison);
     v.poison.position.y = e.r * 1.2;
     v.poison.material.opacity = 0.25 + Math.sin(time * 4 + e.x) * 0.1;
+    v.cold.visible = !!(e.marks && e.marks.cold);
+    v.cold.children[0].position.y = e.r * 1.3;
+    v.cold.children[0].material.opacity = 0.35 + Math.sin(time * 3 + e.y) * 0.1;
   }
 
   // Fade a hero model to `alpha` (1 = solid). Its materials are copied first so shared ones stay solid.
@@ -1763,7 +1776,8 @@
         u.l1.rotation.z = step * 0.5; u.l2.rotation.z = -step * 0.5;
         m.position.y = e.moving ? Math.abs(step) * 2 : 0;
         // Attack lunge: lean back on the wind-up, then hop forward and lean into the strike.
-        const lunge = u.ranged || k <= 0 ? 0 : k > 0.7 ? -(1 - k) / 0.3 : Math.sin((0.7 - k) / 0.7 * Math.PI);
+        // (Engines and burrowers animate their own strikes: noLunge.)
+        const lunge = u.ranged || u.noLunge || k <= 0 ? 0 : k > 0.7 ? -(1 - k) / 0.3 : Math.sin((0.7 - k) / 0.7 * Math.PI);
         m.position.x += Math.cos(e.facing) * lunge * 6;
         m.position.z += Math.sin(e.facing) * lunge * 6;
         m.rotation.z = -lunge * 0.22;
@@ -1902,6 +1916,12 @@
   function aimTower(m, b) {
     const u = m.userData;
     if (u.tick) u.tick(b, time, m);
+    // Chilled (it hit an Icespeaker): frost creeps over it while it reloads slower.
+    if (b.cold > 0 && !u.frost) { u.frost = makeFrost(b); m.add(u.frost); }
+    if (u.frost) {
+      u.frost.visible = b.cold > 0;
+      if (u.frost.visible) u.frost.children[0].material.opacity = 0.4 + Math.sin(time * 3 + b.x) * 0.1;
+    }
     if (u.crystal) { u.crystal.rotation.y = time * 0.6; u.crystal.position.y = 446 + Math.sin(time * 1.5) * 6; }
     if (u.turret && b.aim !== undefined) u.turret.rotation.y = -b.aim - m.rotation.y;
     if (u.arm) {
@@ -1909,6 +1929,18 @@
       u.arm.rotation.z = f > 0.7 ? -0.25 - (1 - f) / 0.3 * 1.9 : -0.25 - f / 0.7 * 1.9;
       u.rock.visible = f < 0.3;
     }
+  }
+
+  // Frost on a chilled building: a pale haze and ice shards around its foot (in the model's own frame).
+  function makeFrost(b) {
+    const K = G.kit, g = new THREE.Group(), r = G.BUILDINGS[b.type].r / 0.95;
+    const haze = K.glow(0xcff4ff, r * 2.6, 0.45); haze.position.y = 60;
+    g.add(haze);
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2, h = 18 + (i % 3) * 8;
+      K.add(g, K.g.cone(5, h, 4), K.lit(0xcff4ff), Math.cos(a) * r * 0.8, h / 2, Math.sin(a) * r * 0.8, { rz: Math.cos(a) * -0.4, rx: Math.sin(a) * 0.4, shadow: false });
+    }
+    return g;
   }
 
   // Energy beams: a flickering ray from the tower's lens to its locked target, thicker and brighter as
@@ -2379,10 +2411,11 @@
     const c = octx;
 
     for (const e of G.entities) {
-      if (e.dead || G.unseen(e, hero)) continue;
+      if (e.dead || e.burrowed || G.unseen(e, hero)) continue;
       const isHero = e instanceof G.Hero;
       const isSoldier = e instanceof G.Soldier;
-      if (isSoldier && e.hp >= e.maxHp) continue;  // keep squads uncluttered until hurt
+      // Keep squads uncluttered until hurt (a Clawcrusher's shell counts).
+      if (isSoldier && e.hp >= e.maxHp && !(e.carapace > 0 && e.carapace < G.SQUAD_KINDS[e.kind].carapace.hp)) continue;
       const s = cam.worldToScreen(e.x, e.y, barHeight(e));
       if (s.behind || !cam.isVisible(e.x, e.y, 80)) continue;
       const w = isHero ? 46 : isSoldier ? 22 : 58, x = Math.round(s.x - w / 2), y = Math.round(s.y);
@@ -2390,6 +2423,7 @@
       c.fillStyle = isHero ? (e.team === G.TEAM.PLAYER ? '#6f9a3c' : '#d8452e') : e.team === G.TEAM.PLAYER ? '#5a86b8' : e.team === G.TEAM.NEUTRAL ? '#c9a24a' : '#9b241c';
       c.fillRect(x, y, w * (e.hp / e.maxHp), 4);
       if (e.shieldAmt > 0) { c.fillStyle = 'rgba(230,245,255,0.85)'; c.fillRect(x, y - 3, Math.min(w, w * e.shieldAmt / e.maxHp), 2); }
+      if (e.carapace > 0) { c.fillStyle = '#8fe0e8'; c.fillRect(x, y - 3, w * e.carapace / G.SQUAD_KINDS[e.kind].carapace.hp, 2); }   // Clawcrusher's shell
       c.strokeStyle = '#5a4a32'; c.lineWidth = 1; c.strokeRect(x - 2.5, y - 2.5, w + 5, 9);
     }
 

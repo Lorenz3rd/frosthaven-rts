@@ -112,10 +112,10 @@
   const passes = (k, team, overWalls) => k.wall && (overWalls || (k.gate && k.team === team));
   map.hitsRock = (x, y, r, team, overWalls) => solidsNear(x, y, r).some(k => !passes(k, team, overWalls) && G.dist(x, y, k.x, k.y) < r + k.cr);
 
-  // Push a circle entity out of rocks/buildings and keep it on the map.
+  // Push a circle entity out of rocks/buildings and keep it on the map. Burrowers pass under walls.
   map.resolve = function (e) {
     for (const k of solidsNear(e.x, e.y, e.r)) {
-      if (passes(k, e.team)) continue;
+      if (passes(k, e.team, e.burrowed)) continue;
       let dx = e.x - k.x, dy = e.y - k.y;
       let d = Math.hypot(dx, dy);
       const min = e.r + k.cr;

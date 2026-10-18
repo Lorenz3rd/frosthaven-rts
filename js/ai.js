@@ -52,7 +52,7 @@
     drifter: { q: { use: 'self', radius: 140 }, w: { use: 'dash', range: 360 }, e: { use: 'zone', radius: 200 }, r: { use: 'line', range: 1000, width: 240 } }
   };
 
-  // Troop barracks, in the order the late game cycles through them.
+  // Troop barracks, in the order the late game cycles through them (then our race's special ones).
   const BARRACKS = ['barracks', 'barracksLong', 'barracksArmored', 'barracksShort', 'barracksSpear', 'barracksMounted',
     'barracksCaster', 'barracksCreature', 'barracksElite', 'barracksWarMachine'];
   const ENGAGE = 750;          // picks a fight with a hero this close (further when it raids our bases)
@@ -79,7 +79,7 @@
     if (e instanceof G.Hero) return 5;
     if (isSoldier(e)) {
       const k = G.SQUAD_KINDS[e.kind];
-      return e.kind === 'boneBall' || e.kind === 'warMachine' ? 4 : k.ally ? 2 : e.kind === 'armored' || e.kind === 'mounted' ? 1.5 : 1;
+      return e.kind === 'boneBall' || e.kind === 'warMachine' || e.kind === 'ram' ? 4 : k.ally || k.role ? 2 : e.kind === 'armored' || e.kind === 'mounted' ? 1.5 : 1;
     }
     if (e instanceof G.Entity) return 0;  // training beasts
     return 0.4;                           // buildings
@@ -244,7 +244,8 @@
       if (b.hp < b.maxHp * 0.7) damaged = true;
     }
     const c = t => n[t] || 0;
-    const troops = BARRACKS.reduce((a, t) => a + c(t), 0);
+    const special = G.specialBarracks(me.team), barracks = BARRACKS.concat(special);
+    const troops = barracks.reduce((a, t) => a + c(t), 0);
     const towers = c('digin') + c('support') + c('siege') + c('rock') + c('energy');
     if (diff.plan === 'basic') return troops <= c('digin') * 2 ? (troops % 2 ? 'barracksShort' : 'barracks') : 'digin';
     if (troops < 1) return 'barracks';
@@ -259,8 +260,9 @@
     if (c('allyDemolitionist') < 1) return 'allyDemolitionist';
     if (c('siege') < 1) return 'siege';
     if (damaged && c('allyEngineer') < 1) return 'allyEngineer';
+    if (special.length && special.every(t => c(t) < 1)) return special[0];
     // From here on: alternate more troops and more towers.
-    return troops <= towers ? BARRACKS[troops % BARRACKS.length] : ['support', 'digin', 'siege', 'rock', 'energy'][towers % 5];
+    return troops <= towers ? barracks[troops % barracks.length] : ['support', 'digin', 'siege', 'rock', 'energy'][towers % 5];
   }
 
   // The base and slot for a new building: bases we hold before new ground, closest to the enemy first,

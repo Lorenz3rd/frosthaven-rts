@@ -31,6 +31,7 @@
     { page: 'infantry', name: 'Infantry', icon: '⚔', hotkey: '1' },
     { page: 'ranged', name: 'Ranged', icon: '➹', hotkey: '2' },
     { page: 'mobile', name: 'Mobile', icon: '♞', hotkey: '3' },
+    { page: 'special', name: 'Special', icon: '✦', hotkey: '4' },
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
   // Troop pages: each entry is a barracks, listed by the troops it trains. Back returns to Barracks.
@@ -53,6 +54,11 @@
     { type: 'barracksWarMachine', icon: '⚙', hotkey: '3' },
     { back: 'barracks', name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
+  // Special: the two troops only the building side's race trains (see G.RACES[].special).
+  const SPECIAL_ICONS = { ram: '♈', longbow: '➹', stormspeaker: '☈', icespeaker: '❄', wavethrower: '🌊', clawcrusher: '🦀',
+    ruinedMachine: '🔩', burrowingBlade: '⛏' };
+  const SPECIAL = team => G.specialBarracks(team).map((type, i) => ({ type, icon: SPECIAL_ICONS[G.BUILDINGS[type].squad] || '✦', hotkey: String(i + 1) }))
+    .concat({ back: 'barracks', name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' });
   const ALLIES = [
     { type: 'allyEngineer', name: 'Engineer', icon: '⚒', hotkey: '1' },
     { type: 'allyMedic', name: 'Medic', icon: '✚', hotkey: '2' },
@@ -61,7 +67,8 @@
     { back: true, name: 'Back', icon: '←', hotkey: 'backspace', label: '⌫' }
   ];
   const PAGES = { defense: { list: DEFENSE, title: 'Defense' }, barracks: { list: BARRACKS, title: 'Barracks' }, allies: { list: ALLIES, title: 'Allies' },
-    infantry: { list: INFANTRY, title: 'Infantry' }, ranged: { list: RANGED, title: 'Ranged' }, mobile: { list: MOBILE, title: 'Mobile' } };
+    infantry: { list: INFANTRY, title: 'Infantry' }, ranged: { list: RANGED, title: 'Ranged' }, mobile: { list: MOBILE, title: 'Mobile' },
+    special: { list: SPECIAL, title: 'Special' } };
   // Opened by left-clicking one of the hero's own buildings.
   const DEMOLISH = [
     { action: 'destroy', name: 'Destroy', icon: '⚒', hotkey: '1' },
@@ -83,15 +90,17 @@
       return 0;
     }
 
+    // list: options, or fn(team) -> options for a page that depends on who it builds for.
     function show(list, forEnemy, pageTitle) {
       const main = list === MAIN, hero = player.hero;
+      // "Enemy" options build for the other side from this hero.
+      const other = hero.team === G.TEAM.PLAYER ? G.TEAM.ENEMY : G.TEAM.PLAYER;
+      if (typeof list === 'function') list = list(forEnemy ? other : hero.team);
       if (!G.dev) list = list.filter(o => !o.enemy);
       options = list; enemy = forEnemy; sel = 0;
       // A stick already pushed when the menu comes up doesn't move the highlight until it's let go.
       const y = player.pad.move.y;
       stickDir = y > 0.5 ? 1 : y < -0.5 ? -1 : 0;
-      // "Enemy" options build for the other side from this hero.
-      const other = hero.team === G.TEAM.PLAYER ? G.TEAM.ENEMY : G.TEAM.PLAYER;
       const title = main ? 'Build' : forEnemy ? pageTitle + ' (enemy)' : pageTitle;
       el.innerHTML = `<div class="title${!main && forEnemy ? ' enemy' : ''}">${title}</div>` + list.map((o, i) => {
         // Buildings are named by the race that would own them; allies also show the unit they train.
@@ -100,7 +109,7 @@
         const squad = o.type && G.BUILDINGS[o.type].squad, k = squad && G.SQUAD_KINDS[squad];
         const name = !squad ? (o.type ? G.buildingName(o.type, team) : o.name)
           : k.ally ? G.buildingName(o.type, team) + `<small>${G.unitName(squad)}</small>`
-            : G.unitName(squad) + `<small>${[k.cols * k.rows + ' per squad', ...G.strengthText(squad)].join(' · ')}</small>`;
+            : G.unitName(squad) + `<small>${[k.cols * k.rows + ' per squad', ...G.strengthText(squad), k.desc].filter(Boolean).join(' · ')}</small>`;
         const header = o.enemy && !list[i - 1].enemy ? '<div class="title enemy">Test: enemy</div>' : '';
         const cls = (i === sel && player.scheme === 'pad' ? 'sel ' : '') + (o.enemy || (forEnemy && o.type) ? 'enemy' : '') + (o.back ? ' back' : '');
         return header + `<button data-i="${i}" class="${cls}"${o.disabled ? ' disabled title="Coming later"' : ''}><span class="icon">${o.icon}</span>` +
