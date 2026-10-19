@@ -6,6 +6,7 @@
 //   { t: 'arrow', x, y, a, len, w }    arrow from (x, y) along angle a (a line, dash or blink)
 //   { t: 'rect', x, y, a, len, w }     bar centered on (x, y), its length along angle a
 //   { t: 'cone', x, y, a, r, arc }     wedge from (x, y)
+//   { t: 'crescent', x, y, a, c1, r1, c2, r2 }  inside the circle (c1 along a, r1), outside (c2, r2)
 // Shapes follow each ability's own geometry (see heroes.js); abilities missing from SHAPES fall back to
 // one per aim type.
 (function (G) {
@@ -62,21 +63,29 @@
     'Darkness Grows': h => G.fx.filter(o => o.kind === 'shadowPool' && o.owner === h && !o.dead).map(o => ({ t: 'circle', x: o.x, y: o.y, r: o.r })),
     'In the Dark': self(h => h.r + 40),
     'Night Falls': foe(160),
-    // Geminate: Twin Strike depends on the form.
-    'Twin Strike': (h, ab, tx, ty) => h.form === 'melee' ? self(140)(h) : area(300)(h, ab, tx, ty),
-    'Phase Shift': dash(),
-    'Resonance': self(220),
-    'Convergence': self(550),
+    // Geminate: Q and W depend on the form.
+    'Drag Down / Tailspin': (h, ab, tx, ty) => h.form === 'melee' ? self(G.geminate.TAILSPIN_R)(h)
+      : [Object.assign({ t: 'crescent', x: h.x, y: h.y, a: angleTo(h, tx, ty) }, G.geminate.CRESCENT)],
+    'Swarm / Tough Carapace': (h, ab, tx, ty) => {
+      if (h.form === 'melee') return self(h => h.r + 40)(h);
+      const s = G.geminate.swarmSpot(h, tx, ty);
+      return [{ t: 'rect', x: s.x, y: s.y, a: s.a + Math.PI / 2, len: G.geminate.SWARM_LEN, w: G.geminate.SWARM_W }];
+    },
+    'Form Swap': self(h => h.r + 40),
+    'Rush Forward': (h, ab, tx, ty) => {
+      const a = angleTo(h, tx, ty), s = G.openSpot(h, h.x + Math.cos(a) * ab.range, h.y + Math.sin(a) * ab.range, ab.range);
+      return s ? arrowTo(h, s, 60) : [];
+    },
     // Blinkblade
     'Poison Dagger': cone(G.m(5), 1.4),
     'Stab Them All': self(G.m(8)),
     'Go Fast': self(h => h.r + 40),
     'Now You See Me': self(h => h.r + 40),
     // Crushing Tide
-    'Riptide Claw': cone(180, 1.9),
-    'Coral Carapace': self(150),
-    'Undertow': area(170),
-    'Tsunami': line(280),
+    'Riptide': self(G.m(3)),
+    'Tide of Shells': self(h => h.r + 40),
+    'Surge Tide': self(h => h.r + 40),
+    'Ebb and Flow': self(G.m(8)),
     // Trapper
     'Harpoon': line(24),
     'Bear Trap': area(34),
@@ -91,10 +100,10 @@
     'Searing Breath': cone(270, 1.24),
     'Eruption': area(240),
     // Drifter
-    'Staff Sweep': self(140),
-    'Long Stride': dash(),
-    'Waystone Camp': area(200),
-    'Great Migration': line(240)
+    'Destructive Fury': cone(G.m(7), 1.2),
+    'Crushing Weight': self(h => h.r + 40),
+    'Shockwave': self(h => h.r + 40),
+    'Against All Odds': dash(G.m(2))
   };
   const FALLBACK = { dir: line(40), point: area(60), foe: foe(160), self: self(h => h.r + 40) };
 

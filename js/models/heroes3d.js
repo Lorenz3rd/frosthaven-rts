@@ -408,125 +408,157 @@
   };
 
   // =============================================================================================
-  // 4. GEMINATE — Harrower insect-swarm being, two-toned, orbs in one form and blades in the other
+  // 4. GEMINATE — Harrower: a hooded, tattered violet robe over a body of crawling insects. Ranged form
+  //    holds swarm-orbs and spreads its wing-cases; melee form closes the carapace, bares forearm claws
+  //    and a stinger tail
   // =============================================================================================
   R.HERO_MODELS.geminate = function (team) {
     const root = new THREE.Group();
-    const TEAL = 0x6ff0e0, PINK = 0xff6fb8;
-    const chitin = K.mat(0x1e2430, { metalness: 0.5, roughness: 0.35 }), chitinHi = K.metal(0x3a4458, 0.3);
-    const tealM = K.lit(TEAL), pinkM = K.lit(PINK), teamM = K.m(K.teamHex(team));
+    const PINK = 0xff6fd0, VIOLET = 0xa46cff;
+    const robe = K.mat(0x3a1a4e, { side: THREE.DoubleSide }), robeDk = K.mat(0x22102e, { side: THREE.DoubleSide });
+    const chitin = K.mat(0x2a1438, { metalness: 0.5, roughness: 0.35 }), chitinHi = K.metal(0x5a2a6e, 0.3);
+    const pinkM = K.lit(PINK), violetM = K.lit(VIOLET), teamM = K.m(K.teamHex(team));
     const u = humanoid(root, {
-      legLen: 27, hipW: 4.5, legR: 2.4, legMat: chitin, shinMat: chitinHi,
-      torsoH: 20, chestR: 8.5, waistR: 5, depth: 0.8, bodyMat: chitin,
-      shoulderW: 10.5, armLen: 24, armR: 2.1, armMat: chitin, foreMat: chitinHi
+      legLen: 27, hipW: 4, legR: 2.4, legMat: chitin, shinMat: chitinHi,
+      torsoH: 21, chestR: 8.5, waistR: 5.5, depth: 0.8, bodyMat: chitin,
+      shoulderW: 10.5, armLen: 25, armR: 2.1, armMat: robe, foreMat: chitinHi
     });
-    // Digitigrade spurs and clawed feet.
-    for (const l of u.legs) {
-      add(l.knee, g.cone(1.6, 7, 4), chitinHi, -3, -2, 0, { rz: 1.9 });
-      for (const z of [-1.6, 1.6]) add(l.knee, g.cone(1, 6, 4), chitinHi, 3, -12.5, z, { rz: -1.7 });
+    // Robe skirt to the ankles, its ragged hem in strips that sway.
+    const skirt = pivot(root, 0, 28, 0);
+    add(skirt, g.cyl(7, 14, 27, 12, true), robe, 0, -13.5, 0);
+    const strips = [];
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * PI * 2;
+      const s = pivot(skirt, Math.cos(a) * 13.5, -26, Math.sin(a) * 13.5);
+      add(s, g.cone(2.4, 7, 3), i % 4 === 1 ? teamM : robeDk, 0, -3, 0, { rz: PI });
+      strips.push(s);
     }
     const T = u.torso;
-    // Segmented thorax plates, split down the middle: teal on the left, pink on the right.
-    for (let i = 0; i < 4; i++) add(T, g.cyl(8.6 - i * 0.8, 8.8 - i * 0.8, 1.6, 10), chitinHi, 0, 6 + i * 4, 0, { sx: 0.82 });
-    for (let i = 0; i < 3; i++) {
-      add(T, g.box(0.8, 2, 3), tealM, 7, 8 + i * 4, -3, { shadow: false });
-      add(T, g.box(0.8, 2, 3), pinkM, 7, 8 + i * 4, 3, { shadow: false });
-    }
-    add(T, g.box(1, 3, 9), teamM, 7.4, 2, 0);
+    // Segmented carapace chest with glowing pink seams, a team sash and an open robe over the shoulders.
+    for (let i = 0; i < 4; i++) add(T, g.cyl(8.6 - i * 0.8, 8.8 - i * 0.8, 1.6, 10), chitinHi, 0, 5 + i * 4, 0, { sx: 0.82 });
+    for (let i = 0; i < 3; i++) add(T, g.box(0.8, 1, 7 - i), pinkM, 7.1, 7 + i * 4, 0, { shadow: false });
+    add(T, g.box(1, 26, 3), teamM, 6.4, 11, 0, { rx: 0.7 });
+    const mantle = pivot(T, -1, 21, 0);
+    add(mantle, g.cyl(9, 13, 18, 12, true), robe, -1, -8, 0, { sx: 0.85 });
+    for (const s of [-1, 1]) add(T, g.dome(6, 10, 5), chitinHi, 0, 18, s * 11, { rx: s * 0.5, sx: 1.2 });
+    // Wing-cases (elytra) on the back: spread in ranged form, folded shut over the back in melee form.
+    const elytra = [];
     for (const s of [-1, 1]) {
-      add(T, g.dome(6, 10, 5), chitinHi, 0, 18, s * 11, { rx: s * 0.5, sx: 1.2 });
-      for (let i = 0; i < 3; i++) add(T, g.cone(1.1, 7 - i, 4), chitinHi, -3 + i * 3, 22, s * (12 + i * 0.5), { rx: s * 0.4, rz: 0.3 });
-      add(u[s < 0 ? 'elbowL' : 'elbowR'], g.cone(1.4, 8, 4), chitinHi, -2.5, -6, 0, { rz: 2.6 });
+      const e = pivot(T, -6, 20, s * 3);
+      add(e, g.sph(7, 10, 8), chitin, -2, -9, 0, { sx: 0.5, sy: 1.6, sz: 0.9 });
+      add(e, g.box(0.6, 18, 0.6), pinkM, -5.6, -9, 0, { shadow: false });
+      elytra.push({ e, s });
     }
-    // Abdomen: a glowing striped bulb behind the hips.
-    const abd = pivot(u.hips, -9, 4, 0);
-    add(abd, g.sph(8, 10, 8), chitin, -3, 0, 0, { sx: 1.5, sy: 0.9 });
-    for (let i = 0; i < 3; i++) add(abd, g.torus(6.5 - i, 0.7, 4, 12), i % 2 ? pinkM : tealM, -6 + i * 4, 0, 0, { ry: PI / 2, shadow: false });
-    // Two pairs of translucent wings.
-    const wings = [];
-    const wingMat = new THREE.MeshBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
-    for (const s of [-1, 1]) for (const [y, len] of [[18, 26], [13, 20]]) {
-      const w = pivot(T, -5, y, s * 3);
-      const m = add(w, g.plane(len, 8), wingMat, -len / 2, 0, 0, { shadow: false });
-      m.rotation.x = PI / 2;
-      wings.push({ w, s });
+    // Stinger tail curling from under the robe (melee form only).
+    const tail = pivot(u.hips, -6, -2, 0);
+    let seg = tail;
+    const tailSegs = [];
+    for (let i = 0; i < 6; i++) {
+      const s = pivot(seg, i ? -4.5 : 0, 0, 0);
+      add(s, g.sph(3.2 - i * 0.3, 7, 6), i % 2 ? chitinHi : chitin, -2.2, 0, 0, { sx: 1.3 });
+      tailSegs.push(s); seg = s;
     }
-    // Head: insect skull, two huge compound eyes (one of each mind), mandibles, antennae.
+    add(seg, g.cone(1.6, 7, 5), pinkM, -7, 0, 0, { rz: PI / 2, shadow: false });
+    // Head: a deep hood over an insect face — two huge glowing pink eyes, clicking mandibles, antennae.
     const H = u.head;
-    add(H, g.sph(6, 12, 10), chitin, 1, 5, 0, { sx: 1.2, sy: 1.1 });
-    add(H, g.cone(4, 8, 6), chitinHi, -3, 9, 0, { rz: 1.9 });
-    add(H, g.sph(3.4, 10, 8), tealM, 3.6, 6, -3.6, { sz: 0.8, shadow: false });
-    add(H, g.sph(3.4, 10, 8), pinkM, 3.6, 6, 3.6, { sz: 0.8, shadow: false });
-    const eyeL = K.addGlow(H, TEAL, 18, 4, 5, -3.5, 0.8), eyeR = K.addGlow(H, PINK, 18, 4, 5, 3.5, 0.8);
+    add(H, g.sph(5.2, 12, 10), chitin, 1, 5, 0, { sx: 1.2, sy: 1.05 });
+    add(H, g.cone(9, 17, 10, true), robe, -1.5, 8.5, 0, { rz: 0.35 });
+    add(H, g.sph(8.4, 12, 8), robe, -2.5, 6, 0, { sx: 0.9, sy: 1.05 });
+    for (const z of [-2.6, 2.6]) add(H, g.sph(2, 10, 8), K.lit(0xd0309a), 4.4, 6.2, z, { sx: 0.7, sy: 0.8, shadow: false });
+    const eyes = K.addGlow(H, PINK, 16, 5, 6, 0, 0.7);
     const mands = [];
-    for (const s of [-1, 1]) { const m = pivot(H, 5.5, 1, s * 1.8); add(m, g.cone(1, 6, 4), chitinHi, 2.5, 0, 0, { rz: -PI / 2 }); mands.push({ m, s }); }
+    for (const s of [-1, 1]) { const m = pivot(H, 5, 1.5, s * 1.8); add(m, g.cone(1, 6, 4), chitinHi, 2.5, 0, 0, { rz: -PI / 2 }); mands.push({ m, s }); }
     const ants = [];
     for (const s of [-1, 1]) {
-      const a = pivot(H, 3, 8, s * 2);
-      add(a, g.cyl(0.35, 0.35, 16, 4), chitinHi, 0, 8, 0);
-      add(a, g.sph(1, 5, 4), s < 0 ? tealM : pinkM, 0, 16, 0, { shadow: false });
+      const a = pivot(H, 4, 9, s * 2.4);
+      add(a, g.cyl(0.35, 0.35, 14, 4), chitinHi, 0, 7, 0);
+      add(a, g.sph(0.9, 5, 4), violetM, 0, 14, 0, { shadow: false });
       ants.push({ a, s });
     }
-    // Hands: orbs (orb form) and long chitin scythe-blades (blade form).
-    const orbs = [], blades = [];
-    for (const [hand, col] of [[u.handL, TEAL], [u.handR, PINK]]) {
+    // Hands: swarm-orbs (ranged form) and hooked chitin claws (melee form).
+    const orbs = [], claws = [];
+    for (const [hand, col] of [[u.handL, VIOLET], [u.handR, PINK]]) {
       const orb = pivot(hand, 2, -6, 0);
-      add(orb, g.ico(3.2, 1), K.lit(0xffffff), 0, 0, 0, { shadow: false });
-      orb.add(K.glow(col, 32, 0.95));
+      add(orb, g.ico(3, 1), K.lit(0xffffff), 0, 0, 0, { shadow: false });
+      orb.add(K.glow(col, 34, 0.95));
       orbs.push(orb);
-      const blade = pivot(hand, 0, -1, 0);
-      add(blade, g.cone(2.4, 30, 4), chitinHi, 0, -15, 0, { rx: PI, sz: 0.35 });
-      add(blade, g.box(0.6, 26, 0.6), K.lit(col), 1.5, -14, 0, { shadow: false });
-      add(blade, g.cone(1.5, 8, 4), chitinHi, -2, -3, 0, { rz: 2 });
-      blades.push(blade);
+      const claw = pivot(hand, 0, -1, 0);
+      add(claw, g.cone(2.4, 24, 4), chitinHi, 0, -12, 0, { rx: PI, sz: 0.35 });
+      add(claw, g.box(0.6, 20, 0.6), pinkM, 1.5, -11, 0, { shadow: false });
+      add(claw, g.cone(1.4, 9, 4), chitinHi, 3, -22, 0, { rz: 2.2 });
+      claws.push(claw);
     }
-    // A cloud of tiny swarm-motes in both colors.
-    const motes = [];
-    for (let i = 0; i < 10; i++) { const s = K.glow(i % 2 ? PINK : TEAL, 7, 0.9); root.add(s); motes.push(s); }
+    // The swarm: dark beetles crawling around the body and pink/violet motes, wider in ranged form.
+    const beetleMat = new THREE.SpriteMaterial({ map: K.glowTex(), color: 0x1a0a22, transparent: true, opacity: 0.95, depthWrite: false });
+    const bugs = [];
+    for (let i = 0; i < 18; i++) {
+      const s = i % 3 ? new THREE.Sprite(beetleMat) : K.glow(i % 2 ? PINK : VIOLET, 8, 0.9);
+      if (i % 3) s.scale.setScalar(3 + (i % 4));
+      root.add(s); bugs.push(s);
+    }
+    const shellGlow = K.addGlow(T, PINK, 70, 0, 12, 0, 0);
 
     function animate(u, e, time) {
-      const sw = walk(u, e, time, 12, 0.55);
+      const sw = walk(u, e, time, 10, 0.45);
       const melee = e.form === 'melee';
       const k = e.swing, c = e.castAnim, slot = e.castSlot;
       const ws = ease.windStrike(k);
       let lz = 0.4 - sw * 0.3, rz = 0.4 + sw * 0.3, lb = 0.8, rb = 0.8, twist = 0, lean = 0;
       if (melee) {
-        // Blade form: arms cocked out, a crossing double slash.
-        lz = 0.8; rz = 0.8; lb = 1.1; rb = 1.1;
-        if (k > 0) { lz = 1.1 + ws * 0.8; rz = 1.1 + ws * 0.8; lb = 0.4 - ws * 0.3; rb = 0.4 - ws * 0.3; twist = (e.swingAlt ? 1 : -1) * ws * 0.6; lean = -ws * 0.1; }
+        // Claws cocked out, a crossing double rake.
+        lz = 0.8; rz = 0.8; lb = 1.1; rb = 1.1; lean = -0.12;
+        if (k > 0) { lz = 1.1 + ws * 0.8; rz = 1.1 + ws * 0.8; lb = 0.4 - ws * 0.3; rb = 0.4 - ws * 0.3; twist = (e.swingAlt ? 1 : -1) * ws * 0.6; lean = -ws * 0.1 - 0.12; }
       } else if (k > 0) {
-        // Orb form: alternate hands thrust forward to release.
+        // Alternate hands thrust forward to loose the swarm.
         const lift = 1.1 + ws * 0.5;
         if (e.swingAlt) { lz = lift; lb = 0.1; } else { rz = lift; rb = 0.1; }
       }
+      let spin = 0;
       if (c > 0) {
         const b = ease.bump(c);
-        if (slot === 0) { if (melee) { u.torso.rotation.y = c * PI * 4; } else { lz = rz = 0.4 + b * 1.1; lb = rb = 0.1; } }
-        if (slot === 1) { lean = -0.4 * b; lz = rz = -0.5 * b; }
+        if (slot === 0) {
+          if (melee) spin = (1 - c) * PI * 2;   // Tailspin: one full turn
+          else { rz = 0.6 + b * 1.4; rb = 0.1; twist = lerp(-1, 1.1, 1 - c); }   // Drag Down: a wide raking sweep
+        }
+        if (slot === 1) {
+          if (melee) { lean = -0.45 * b; lz = rz = 1.3 * b; lb = rb = 1.8 * b; }   // Tough Carapace: hunker behind the shell
+          else { lz = rz = 0.5 + b * 1.4; lb = rb = 0.1; lean = -0.15 * b; }        // Swarm: fling both hands forward
+        }
         if (slot === 2) { lz = rz = 0.3 + b * 2.4; lb = rb = 0.1; }
-        if (slot === 3) { lz = rz = 0.6 + b * 2; lb = rb = 0.3; lean = 0.25 * b; }
+        if (slot === 3) { lean = -0.6 * b; lz = rz = -0.6 * b; lb = rb = 0.3; }
       }
       pose(u.armL, u.elbowL, lz, 0.35, lb, -1);
       pose(u.armR, u.elbowR, rz, 0.35, rb, 1);
-      if (!(c > 0 && slot === 0 && melee)) u.torso.rotation.y = twist;
-      u.torso.rotation.z = lean;
+      u.torso.rotation.y = twist; u.torso.rotation.z = lean;
+      u.hips.rotation.y = spin;
+      skirt.position.y = u.hips.position.y + 1;
+      skirt.rotation.z = -sw * 0.05;
+      skirt.rotation.y = spin;
+      strips.forEach((s, i) => { s.rotation.x = Math.sin(time * 3 + i) * 0.25 + (e.moving || spin ? 0.3 : 0); });
+      mantle.rotation.z = (e.moving ? 0.15 : 0.03) + Math.sin(time * 2) * 0.03;
       orbs.forEach((o, i) => { o.visible = !melee; o.position.y = -6 + Math.sin(time * 4 + i * 3) * 1.2; o.rotation.y = time * 3; });
-      blades.forEach(b => { b.visible = melee; aimBlade(b); });
-      function aimBlade(b) { b.rotation.z = 0.3; }
-      wings.forEach(({ w, s }, i) => {
-        const flap = Math.sin(time * (e.moving || c > 0 ? 40 : 6) + i) * (e.moving || c > 0 ? 0.5 : 0.15);
-        w.rotation.x = s * (0.5 + flap); w.rotation.y = -0.4;
+      claws.forEach(cl => { cl.visible = melee; cl.rotation.z = 0.3; });
+      // Wing-cases: spread and buzzing in ranged form, folded down over the back in melee form.
+      const open = smoothTo(u, 'open', melee ? 0 : 1, 0.15);
+      elytra.forEach(({ e: el, s }) => {
+        const buzz = open * Math.sin(time * (e.moving || c > 0 ? 38 : 5)) * 0.06;
+        el.rotation.x = s * (0.15 + open * 0.55 + buzz); el.rotation.z = -0.1 - open * 0.25;
       });
+      tail.visible = melee;
+      tailSegs.forEach((s, i) => { s.rotation.y = Math.sin(time * 2.5 + i * 0.6) * 0.2 + (spin ? 0.25 : 0); s.rotation.z = i ? 0.32 : -0.3; });
       mands.forEach(({ m, s }) => { m.rotation.y = s * (0.3 + Math.abs(Math.sin(time * 5)) * 0.3); });
-      ants.forEach(({ a, s }) => { a.rotation.x = s * (0.4 + Math.sin(time * 3 + s) * 0.15); a.rotation.z = -0.4; });
-      eyeL.material.opacity = melee ? 0.4 : 0.95; eyeR.material.opacity = melee ? 0.95 : 0.4;
-      abd.rotation.z = Math.sin(time * 2) * 0.08;
-      motes.forEach((s, i) => {
-        const a = time * (1.5 + i * 0.1) + i * 0.63, r = 18 + (i % 3) * 5;
-        s.position.set(Math.cos(a) * r, 30 + Math.sin(time * 3 + i) * 14, Math.sin(a) * r);
+      ants.forEach(({ a, s }) => { a.rotation.x = s * (0.4 + Math.sin(time * 3 + s) * 0.15); a.rotation.z = -0.5; });
+      eyes.material.opacity = 0.7 + Math.sin(time * 4) * 0.2;
+      shellGlow.material.opacity = e.state && e.state.carapace > 0 ? 0.35 + Math.sin(time * 8) * 0.15 : 0;
+      // Swarm: a loose cloud in ranged form, crawling close over the body in melee form; bursts out on a swap.
+      const burst = c > 0 && slot === 2 ? ease.bump(c) : 0;
+      bugs.forEach((s, i) => {
+        const a = time * (1.4 + (i % 5) * 0.15) * (i % 2 ? 1 : -1) + i * 0.7;
+        const r = (melee ? 11 : 18 + (i % 3) * 6) + burst * 30;
+        s.position.set(Math.cos(a) * r, 12 + ((i * 7) % 40) + Math.sin(time * 3 + i) * 6, Math.sin(a) * r);
       });
     }
-    return finish(root, 1.24, (_, e, t) => animate(u, e, t), [chitin], { u });
+    return finish(root, 1.24, (_, e, t) => animate(u, e, t), [chitin, robe], { u });
   };
 
   // =============================================================================================
@@ -568,8 +600,14 @@
     add(H, g.sph(6.5, 12, 10), skin, 1, 5, 0);
     add(H, g.sph(1.6, 6, 5), skin, 7.2, 4, 0);
     for (const s of [-1, 1]) add(H, g.cone(1.8, 9, 5), skin, -1, 7, s * 7, { rx: s * -1.2, rz: 0.4 });
-    for (let i = 0; i < 7; i++) add(H, g.cone(2, 6, 4), K.m(0xe8e0d0), -2 + Math.cos(i) * 3, 11 + (i % 2), Math.sin(i * 1.7) * 4, { rz: 0.6 + (i % 3) * 0.3 });
-    add(H, g.torus(6.6, 0.8, 4, 16), K.m(0x3a2418), 0.8, 6.5, 0, { rx: PI / 2 });
+    // Black hood with a blue lining and trim, tilted forward so its brim hangs just over the goggles.
+    const HOOD_R = 7.8, HOOD_T = PI * 0.72;
+    const hood = pivot(H, 1, 5.2, 0); hood.rotation.z = 1.1;
+    add(hood, g.dome(HOOD_R, 14, 9, HOOD_T), K.m(0x16161c), 0, 0, 0);
+    add(hood, g.dome(HOOD_R - 0.4, 14, 9, HOOD_T), K.m(0x1e3f9a, { side: THREE.BackSide }), 0, 0, 0, { shadow: false });
+    add(hood, g.torus(HOOD_R * Math.sin(HOOD_T), 0.7, 4, 18), K.m(0x2a5ad0), 0, HOOD_R * Math.cos(HOOD_T), 0, { rx: PI / 2 });
+    add(hood, g.torus(HOOD_R + 0.1, 0.45, 4, 18, PI * 0.7), K.m(0x2a5ad0), 0, 0, 0, { rz: PI * 0.15 });
+    add(hood, g.cone(2.6, 6, 6), K.m(0x16161c), -1.5, HOOD_R + 1, 0, { rz: 0.5 });
     for (const z of [-2.6, 2.6]) {
       add(H, g.cyl(2.2, 2.2, 2.4, 10), brass, 6.6, 6.8, z, { rz: PI / 2 });
       add(H, g.cyl(1.7, 1.7, 2.6, 10), K.lit(BLUE), 6.8, 6.8, z, { rz: PI / 2, shadow: false });
@@ -818,27 +856,48 @@
   // =============================================================================================
   R.HERO_MODELS.pyroclast = function (team) {
     const root = new THREE.Group();
-    const ORANGE = 0xff7a20;
-    const rock = K.mat(0x221a18, { roughness: 0.85 }), rockHi = K.m(0x3a2c26), lava = K.lit(0xff7a20), lavaHi = K.lit(0xffd080);
+    const ORANGE = 0xff6a14, RED = 0xe0280a;
+    // Glossy black obsidian, scorched red-black stone, and molten magma that glows (emissive, pulsed below).
+    const rock = K.mat(0x0c0909, { roughness: 0.45, metalness: 0.2 }), rockHi = K.mat(0x2a0c08, { roughness: 0.8 });
+    const lava = K.lit(0xff5a10), lavaHi = K.lit(0xffa030);
+    const magma = K.mat(0x401004, { emissive: RED, emissiveIntensity: 1, roughness: 0.7 });
+    const magmaHot = K.mat(0x602008, { emissive: ORANGE, emissiveIntensity: 1, roughness: 0.6 });
+    const molten = [];   // [mesh, phase] — read mesh.material each frame (ghosting clones materials)
+    const melt = (parent, geo, mat, x, y, z, o, ph = 0) => { const m = add(parent, geo, mat, x, y, z, Object.assign({ shadow: false }, o)); molten.push([m, ph]); return m; };
     const u = humanoid(root, {
       legLen: 26, hipW: 5.5, legR: 4, legMat: rock, shinMat: rockHi,
       torsoH: 24, chestR: 11.5, waistR: 7.5, depth: 0.8,
       shoulderW: 13.5, armLen: 25, armR: 3.4, armMat: rock, foreMat: rockHi
     });
     const T = u.torso;
-    // Glowing furnace core showing between angular obsidian plates.
+    // Glowing furnace core: a molten body showing through the seams between angular obsidian plates.
+    melt(T, g.cyl(7.5, 5.5, 22, 9), magma, 0, 12, 0, { sx: 0.8 }, 0);
     add(T, g.ico(8.5, 1), lava, 0, 13, 0, { sx: 0.8, shadow: false });
     const coreGlow = K.addGlow(T, ORANGE, 40, 5, 13, 0, 0.5);
     const plates = [[6, 18, -5, 0.3], [6, 18, 5, -0.3], [6, 9, -6, 0.5], [6, 9, 6, -0.5], [-6, 15, 0, 0], [0, 22, -9, 0.9], [0, 22, 9, -0.9], [3, 3, 0, 0]];
-    for (const [x, y, z, r] of plates) add(T, g.dodec(6), rock, x, y, z, { rx: r, sx: 0.55, sy: 1.1 });
-    for (let i = 0; i < 5; i++) add(T, g.box(0.6, 5 + i, 0.6), lavaHi, 7.4, 6 + i * 3.2, -4 + i * 2, { rz: 0.5 - i * 0.2, shadow: false });
+    plates.forEach(([x, y, z, r], i) => add(T, g.dodec(6), i % 3 === 2 ? rockHi : rock, x, y, z, { rx: r, sx: 0.55, sy: 1.1 }));
+    for (let i = 0; i < 5; i++) melt(T, g.box(0.7, 5 + i, 0.7), magmaHot, 7.4, 6 + i * 3.2, -4 + i * 2, { rz: 0.5 - i * 0.2 }, i * 0.8);
+    for (let i = 0; i < 3; i++) melt(T, g.box(0.6, 6, 0.6), magma, -6.6, 9 + i * 4, -3 + i * 3, { rz: -0.4 + i * 0.3 }, 2 + i);
     // Team rune band around the waist (glowing).
     add(T, g.torus(7.8, 0.8, 4, 16), K.lit(K.teamGlow(team)), 0, 2, 0, { rx: PI / 2, sx: 0.85, shadow: false });
-    for (const l of u.legs) { add(l.knee, g.dodec(4), rockHi, 1, -2, 0); add(l.knee, g.box(0.6, 6, 0.6), lava, 3.8, -6, 0, { shadow: false }); }
-    // Head: faceted crystal skull, slit eyes, a crown of fire and orbiting shards.
+    // Limbs: obsidian and scorched stone split by glowing magma fissures.
+    for (const l of u.legs) {
+      add(l.knee, g.dodec(4), rockHi, 1, -2, 0);
+      melt(l.knee, g.box(0.7, 6, 0.7), magmaHot, 3.8, -6, 0, {}, 1);
+      melt(l.hip, g.box(0.6, 8, 0.6), magma, 3.6, -7, 0.8, { rx: 0.15 }, 3);
+      melt(l.knee, g.torus(3.3, 0.45, 4, 9), magma, 0, -9, 0, { rx: PI / 2 }, 4);
+    }
+    for (const [sh, el] of [[u.armL, u.elbowL], [u.armR, u.elbowR]]) {
+      melt(sh, g.box(0.6, 8, 0.6), magma, 3.1, -6, 0, { rz: 0.1 }, 2);
+      melt(el, g.box(0.6, 7, 0.6), magmaHot, 2.7, -6, 0.6, { rz: -0.12 }, 5);
+      melt(el, g.torus(2.9, 0.45, 4, 9), magma, 0, -1, 0, { rx: PI / 2 }, 1.5);
+    }
+    // Head: faceted obsidian skull, slit eyes, a molten jaw crack, a crown of fire and orbiting shards.
     const H = u.head;
     add(H, g.oct(6.5), rock, 0.5, 6, 0, { sy: 1.3 });
     add(H, g.box(1, 1.2, 6), lavaHi, 5, 6.5, 0, { shadow: false });
+    melt(H, g.box(0.8, 0.6, 4.5), magma, 4.4, 3, 0, {}, 0.5);
+    melt(H, g.box(0.5, 4, 0.5), magmaHot, 3.6, 9.5, 1.4, { rx: 0.4 }, 2.5);
     const eyes = K.addGlow(H, 0xffd080, 12, 6, 6.5, 0, 0.7);
     const crown = [];
     for (let i = 0; i < 5; i++) { const s = K.glow(i % 2 ? 0xffa040 : 0xff5a10, 14, 0.55); H.add(s); crown.push(s); }
@@ -850,7 +909,8 @@
       const b = pivot(T, -1, 30, s * 15);
       add(b, g.dodec(7), rock, 0, 0, 0, { sy: 0.8 });
       add(b, g.ico(4, 0), lava, 0, -3.5, 0, { shadow: false });
-      b.add(K.glow(ORANGE, 28, 0.6));
+      melt(b, g.box(0.7, 0.7, 9), magmaHot, 0, 1.5, 0, { ry: 0.6 * s }, s + 2);
+      b.add(K.glow(RED, 28, 0.6));
       boulders.push({ b, s });
     }
     // Molten fists.
@@ -858,11 +918,12 @@
     for (const hand of [u.handL, u.handR]) {
       add(hand, g.dodec(4.2), rockHi, 0, -2, 0);
       add(hand, g.ico(3, 0), lava, 1.5, -3, 0, { shadow: false });
+      melt(hand, g.box(0.6, 0.6, 5), magmaHot, 2.6, -1.2, 0, {}, 3.5);
       const f = K.addGlow(hand, ORANGE, 30, 2, -4, 0, 0.8);
       fists.push(f);
     }
     const embers = [];
-    for (let i = 0; i < 8; i++) { const s = K.glow(i % 2 ? 0xffb050 : ORANGE, 8, 0.9); root.add(s); embers.push(s); }
+    for (let i = 0; i < 8; i++) { const s = K.glow(i % 3 === 0 ? RED : i % 2 ? 0xffa040 : ORANGE, 8, 0.9); root.add(s); embers.push(s); }
 
     function animate(u, e, time) {
       const sw = walk(u, e, time, 9, 0.5);
@@ -884,6 +945,8 @@
       u.torso.rotation.z = lean; u.torso.rotation.y = twist;
       const f = 0.85 + Math.sin(time * 10) * 0.15;
       coreGlow.material.opacity = 0.35 + flare * 0.3 + Math.sin(time * 4) * 0.08;
+      // Magma seams throb slowly, flaring brighter while attacking or casting.
+      for (const [m, ph] of molten) m.material.emissiveIntensity = 0.75 + Math.sin(time * 2.4 + ph) * 0.3 + flare * 0.6;
       eyes.material.opacity = 0.5 + Math.sin(time * 7) * 0.2;
       const big = (c > 0 && slot === 3) ? 1.8 : 1;
       crown.forEach((s, i) => {
@@ -905,94 +968,169 @@
   };
 
   // =============================================================================================
-  // 9. DRIFTER — Inox wanderer: horned bull-folk, fur cloak, a camp's worth of pack, lantern staff
+  // 9. DRIFTER — a grizzled old Inox: great swept horns, grey mane and braided beard, a hooded traveling
+  //    cloak and team scarf over hide and fur, and a two-handed stone-and-iron maul
   // =============================================================================================
   R.HERO_MODELS.drifter = function (team) {
     const root = new THREE.Group();
-    const hide = K.mat(0x7a5a40), fur = K.m(0x4a3828), furLight = K.m(0x8a6a4a), horn = K.m(0xd8c8a8), wood = K.m(0x5a3e26);
-    const brass = K.metal(0xc89a40, 0.35), teamM = K.mat(K.teamHex(team), { side: THREE.DoubleSide });
+    const skin = K.mat(0x8a6650), skinDark = K.m(0x5e4434), hide = K.mat(0x6a4c34), leather = K.m(0x3e2c1e);
+    const fur = K.m(0x5a4632), furPale = K.m(0x9a8a76), grey = K.mat(0xc8c2b6, { roughness: 0.9 }), greyDark = K.m(0x8e887e);
+    const horn = K.mat(0xd8caa8, { roughness: 0.6 }), hornTip = K.m(0x4a4034);
+    const cloakM = K.mat(0x4e4a40, { side: THREE.DoubleSide }), teamM = K.mat(K.teamHex(team), { side: THREE.DoubleSide });
+    const iron = K.metal(0x6e7076, 0.45), bronze = K.metal(0xa87a40, 0.4), wood = K.m(0x4a3220), stone = K.mat(0x7a7a74, { roughness: 0.95 });
     const u = humanoid(root, {
-      legLen: 26, hipW: 6, legR: 4.6, legMat: K.m(0x3a2e24), shinMat: hide,
-      torsoH: 24, chestR: 13, waistR: 10, depth: 0.78, bodyMat: hide,
-      shoulderW: 14.5, armLen: 26, armR: 3.8, armMat: hide, handMat: hide
+      legLen: 26, hipW: 6.2, legR: 4.8, legMat: leather, shinMat: hide, bootMat: fur,
+      torsoH: 25, chestR: 13.5, waistR: 10.5, depth: 0.8, bodyMat: hide,
+      shoulderW: 15, armLen: 26, armR: 4.1, armMat: skin, foreMat: leather, handMat: skinDark
     });
-    for (const l of u.legs) add(l.knee, g.cyl(3.2, 3.8, 4, 8), K.m(0x1a1410), 0, -12, 0);   // hooves
-    const T = u.torso;
-    // Fur mantle over the shoulders, a team-colored traveling shawl, belt of pouches.
-    add(T, g.cyl(12, 15, 9, 12), fur, 0, 21, 0, { sx: 0.85 });
-    for (let i = 0; i < 12; i++) { const a = i / 12 * PI * 2; add(T, g.cone(2.6, 7, 4), furLight, Math.cos(a) * 12, 17, Math.sin(a) * 14, { rz: Math.cos(a) * 0.5 + PI, rx: -Math.sin(a) * 0.5 }); }
-    add(T, g.box(1.2, 14, 22), teamM, 9.6, 12, 0, { rz: -0.15 });
-    add(T, g.cyl(10.5, 10.5, 3, 12), K.m(0x2a1a10), 0, 2, 0, { sx: 0.8 });
-    for (const z of [-6, 0, 6]) add(T, g.box(3, 4, 3.5), K.m(0x5a3a22), 8, 0, z);
-    // The pack: frame, bedroll, pots and pans, tent poles, coiled rope, a dangling kettle.
-    const pack = pivot(T, -12, 14, 0);
-    add(pack, g.box(12, 30, 22), K.m(0x6a4a2e), -2, 0, 0);
-    for (const z of [-11, 11]) add(pack, g.cyl(0.9, 0.9, 44, 5), wood, -8, 6, z);
-    add(pack, g.cyl(4.5, 4.5, 28, 10), K.m(0x6a4a8a), -6, 18, 0, { rx: PI / 2 });
-    add(pack, g.cyl(4.5, 4.5, 28, 10), K.m(0x8a3a2a), -6, -14, 0, { rx: PI / 2 });
-    add(pack, g.cyl(4, 3, 4, 10), K.metal(0x5a5a5e), -9, 2, 12, { rz: PI / 2 });
-    add(pack, g.cyl(5, 5, 1.2, 12), K.metal(0x4a4a4e), -9, 6, -12.5, { rx: PI / 2 });
-    add(pack, g.torus(4, 1, 4, 12), K.m(0xb8a070), -9, -4, -12.5, { ry: 0 });
-    for (const z of [-5, 5]) add(pack, g.cyl(0.7, 0.7, 30, 4), wood, -4, 26, z, { rz: 0.2 });
-    const kettle = pivot(pack, -6, -16, 11);
-    add(kettle, g.cyl(0.3, 0.3, 4, 4), K.m(0x2a2a2a), 0, -2, 0); add(kettle, g.sph(3, 8, 6), K.metal(0x3a3a3e), 0, -6, 0);
-    // Bull head: broad muzzle, nose ring, beard, small eyes, sweeping horns.
-    const H = u.head;
-    add(H, g.sph(7, 12, 10), hide, 0, 6, 0, { sx: 1.15, sy: 1.05 });
-    add(H, g.sph(5.2, 12, 10), K.m(0x9a7a5a), 6.5, 2.5, 0, { sx: 1.0, sy: 0.8, sz: 1.15 });   // broad muzzle
-    add(H, g.sph(3.6, 10, 8), K.m(0x4a3428), 10, 2, 0, { sx: 0.5, sy: 0.75, sz: 1.2 });       // nose pad
-    for (const z of [-1.6, 1.6]) add(H, g.sph(0.9, 6, 5), K.m(0x120c08), 11.6, 2.4, z, { shadow: false });
-    add(H, g.torus(2, 0.5, 4, 10), brass, 11.2, -0.6, 0, { ry: PI / 2 });
-    add(H, g.box(7, 2.5, 13), furLight, -1, 12, 0, { rz: 0.2 });   // shaggy forelock
-    for (let i = 0; i < 5; i++) add(H, g.cone(1.5, 7, 4), furLight, 6 + (i % 2), -4, -3 + i * 1.5, { rz: PI + 0.2 });
-    for (const s of [-1, 1]) {
-      add(H, g.sph(0.9, 6, 5), K.lit(0xffe0a0), 4.5, 7, s * 4.5, { shadow: false });
-      add(H, g.cyl(1.8, 2.8, 12, 7), horn, 0, 9, s * 9, { rx: s * 1.3 });
-      add(H, g.cone(1.8, 10, 7), horn, 3, 14, s * 14.5, { rx: s * 0.4, rz: -0.6 });
-      add(H, g.cone(1.6, 4, 5), hide, -1, 9, s * 6.5, { rx: s * 1.6 });
+    for (const l of u.legs) {
+      add(l.knee, g.cyl(5.2, 4.4, 5, 8), fur, 0, -10, 0);                             // fur boot tops
+      for (const y of [-3, -6]) add(l.knee, g.torus(4.1, 0.5, 4, 10), leather, 0, y, 0, { rx: PI / 2 });   // leg wraps
     }
-    // Walking staff: gnarled, with a hook at the top holding a lantern.
-    const staff = pivot(u.handR, 0, -2, 0);
-    add(staff, g.cyl(1.6, 2, 104, 7), wood, 0, -22, 0);
-    for (let i = 0; i < 4; i++) add(staff, g.sph(2.2, 6, 5), wood, 0, -60 + i * 22, 0);
-    add(staff, g.torus(5, 1.3, 5, 10, PI * 1.2), wood, 4, -78, 0, { rz: PI - 0.4 });
-    const lantern = pivot(staff, 8, -74, 0);
-    add(lantern, g.cyl(0.3, 0.3, 5, 4), K.m(0x2a2a2a), 0, -2.5, 0);
-    add(lantern, g.cyl(3, 3, 6, 6, true), new THREE.MeshBasicMaterial({ color: 0x3a3020, wireframe: true }), 0, -8, 0, { shadow: false });
-    add(lantern, g.cone(3.5, 3, 6), brass, 0, -4.5, 0);
-    add(lantern, g.cyl(3.2, 3.2, 1, 6), brass, 0, -11.5, 0);
-    const flame = K.addGlow(lantern, 0xffc060, 40, 0, -8, 0, 1);
-    const light = G.kit.light(0xffb050, 0.9, 260, 2); lantern.add(light); light.position.y = -8;
+    const T = u.torso;
+    // Hide jerkin with crossed straps, a riveted iron plate, a broad belt and a hide-and-fur kilt.
+    add(T, g.box(1.6, 30, 3.2), leather, 8.6, 12, 0, { rx: 0.62 });
+    add(T, g.box(1.6, 30, 3.2), leather, -8.6, 12, 0, { rx: -0.62 });
+    add(T, g.box(2.2, 8, 9), iron, 9.2, 14, 0, { rz: -0.1 });
+    for (const z of [-3, 3]) add(T, g.sph(0.8, 5, 4), bronze, 10.4, 17, z, { shadow: false });
+    add(T, g.cyl(11, 11, 4, 12), leather, 0, 2, 0, { sx: 0.82 });
+    add(T, g.box(2.4, 5, 6), bronze, 9.1, 2, 0);
+    add(T, g.cyl(10.8, 13.5, 12, 12, true), hide, 0, -5, 0, { sx: 0.85 });
+    for (let i = 0; i < 8; i++) { const a = i / 8 * PI * 2; add(T, g.box(2, 5, 4), fur, Math.cos(a) * 11.2, -11, Math.sin(a) * 13.2, { ry: -a }); }
+    for (const z of [-5, 5]) add(T, g.box(3.4, 4.5, 3.6), leather, 7.8, -1, z);    // pouches
+    // Heavy fur mantle over the shoulders and an iron pauldron on the leading (left) shoulder.
+    add(T, g.cyl(12.5, 16, 8, 14), fur, 0, 21, 0, { sx: 0.82 });
+    for (let i = 0; i < 14; i++) { const a = i / 14 * PI * 2; add(T, g.cone(2.6, 6, 4), i % 2 ? fur : furPale, Math.cos(a) * 13, 16.5, Math.sin(a) * 15.5, { rz: Math.cos(a) * 0.5 + PI, rx: -Math.sin(a) * 0.5 }); }
+    add(T, g.dome(6.5, 10, 5), iron, 0, 22, -15.5, { rx: -0.5 });
+    add(T, g.dome(5.2, 10, 5), iron, 0, 19, -17.5, { rx: -0.8 });
+    add(T, g.torus(6.3, 0.7, 4, 12), bronze, 0, 22.2, -16.2, { rx: PI / 2 - 0.5 });
+    // Team scarf wound round the neck, its tails trailing down the chest.
+    add(T, g.torus(8.6, 2.4, 6, 14), teamM, 0, 26.5, 0, { rx: PI / 2, sx: 0.85 });
+    const tails = [];
+    for (const z of [-3, 2]) {
+      const t = pivot(T, 8.5, 25, z);
+      add(t, g.box(1.2, 14, 4.4), teamM, 0, -7, 0);
+      add(t, g.box(1.4, 1.6, 4.6), K.m(0x2a2018), 0, -13, 0);
+      tails.push(t);
+    }
+    // Hooded traveling cloak: the hood thrown back, the cloak in three hinged panels that stream behind.
+    const hood = pivot(T, -7, 26, 0);
+    add(hood, g.dome(9, 12, 6, PI * 0.62), cloakM, -2, 0, 0, { rz: 0.9, sx: 1.1 });
+    const cloak = [];
+    for (const z of [-9, 0, 9]) {
+      const c = pivot(T, -10.5, 24, z);
+      add(c, g.box(1.2, 44, 10.5), cloakM, 0, -22, 0);
+      add(c, g.box(1.4, 2, 10.8), teamM, 0, -43.5, 0);
+      cloak.push(c);
+    }
+    // Head: a broad weathered Inox face under a heavy brow, wide flat nose, short tusks, a grey mane and
+    // a long braided beard.
+    const H = u.head;
+    add(H, g.cyl(4, 5, 5, 8), skin, 0, 0.5, 0);
+    add(H, g.sph(6.8, 12, 10), skin, 1, 6.5, 0, { sx: 1.05, sy: 1.1, sz: 0.95 });
+    add(H, g.box(3, 2.2, 10), skinDark, 6.2, 9, 0);                                     // heavy brow
+    add(H, g.sph(3, 10, 8), skin, 7.2, 5.2, 0, { sx: 0.8, sy: 0.9, sz: 1.25 });          // broad flat nose
+    for (const z of [-1.3, 1.3]) add(H, g.sph(0.8, 6, 5), K.m(0x1a120c), 9.4, 4.4, z, { shadow: false });
+    const eyes = [];
+    for (const z of [-2.8, 2.8]) {
+      eyes.push(add(H, g.sph(0.9, 6, 5), K.lit(0xffd890), 6.6, 7.6, z, { shadow: false }));
+      add(H, g.box(1.2, 1.4, 3.2), grey, 7.4, 9.6, z * 1.1, { rz: -0.3, shadow: false });   // bushy grey brows
+      add(H, g.cone(0.9, 3.6, 5), horn, 7.8, 1.4, z * 0.9, { rz: -0.25 });              // lower tusks
+    }
+    add(H, g.sph(7, 10, 8), grey, -2.6, 8, 0, { sx: 0.95, sy: 1.15 });                  // mane
+    for (let i = 0; i < 7; i++) add(H, g.cone(2.2, 11, 4), i % 2 ? grey : greyDark, -5.5, 6 - i * 0.6, -6 + i * 2, { rz: 0.5 + (i % 3) * 0.1 });
+    add(H, g.sph(5.4, 10, 8), grey, 5, 1.6, 0, { sx: 0.8, sy: 0.9, sz: 1.2 });        // moustache and beard mass
+    const beard = pivot(H, 5.5, -1.5, 0);
+    for (let i = 0; i < 5; i++) add(beard, g.sph(2.6 - i * 0.32, 7, 6), i % 2 ? greyDark : grey, i * 0.3, -i * 2.8, 0, { sy: 1.3 });
+    add(beard, g.cyl(1.3, 1.3, 1.4, 8), bronze, 1.2, -9.5, 0);
+    for (const z of [-3.6, 3.6]) add(H, g.cone(1.8, 10, 5), grey, 5, -1, z, { rz: PI - 0.15 });   // side whiskers
+    for (const s of [-1, 1]) add(H, g.cone(1.6, 4.5, 5), skin, -0.5, 9, s * 6.6, { rx: s * 1.7 });  // ears
+    // Great horns: out from the temples, sweeping up and forward, built from tapering hinged segments.
+    for (const s of [-1, 1]) {
+      let p = pivot(H, 0.5, 11, s * 5);
+      p.rotation.x = s * 1.45;
+      const n = 7, len = 4.6;
+      for (let i = 0; i < n; i++) {
+        const r0 = 2.9 * (1 - i / n) + 0.35, r1 = 2.9 * (1 - (i + 1) / n) + 0.35;
+        add(p, g.cyl(r1, r0, len + 0.4, 8), i === n - 1 ? hornTip : horn, 0, len / 2, 0);
+        if (i === 1) add(p, g.torus(r0 * 0.95, 0.5, 4, 10), bronze, 0, len * 0.4, 0, { rx: PI / 2 });   // a bronze horn ring
+        p = pivot(p, 0, len, 0);
+        p.rotation.x = -s * 0.3; p.rotation.z = -0.24;
+      }
+    }
+    // The maul: a long haft with grip wraps and iron fittings, and a great banded stone head with spikes.
+    // Hangs along -y from the right hand; the left arm follows it for two-handed blows.
+    const maul = pivot(u.handR, 0, -2, 0);
+    add(maul, g.cyl(1.7, 1.9, 72, 7), wood, 0, -18, 0);
+    for (let i = 0; i < 4; i++) add(maul, g.cyl(2.2, 2.2, 2, 7), leather, 0, 10 - i * 6, 0);
+    add(maul, g.cyl(2.3, 2.3, 4, 8), iron, 0, 16, 0);
+    add(maul, g.cyl(2.4, 2.4, 3, 8), iron, 0, -50, 0);
+    const head = pivot(maul, 0, -59, 0);
+    add(head, g.box(13, 15, 13), stone, 0, 0, 0);
+    for (const y of [-5.5, 5.5]) add(head, g.box(13.6, 2, 13.6), iron, 0, y, 0);
+    for (const x of [-6.8, 6.8]) add(head, g.box(1.4, 13, 11), iron, x, 0, 0);
+    add(head, g.cone(3, 9, 6), iron, 0, 0, 10.5, { rx: PI / 2 });                        // back spike
+    add(head, g.cone(2.6, 5, 6), iron, 0, -10, 0, { rz: PI });                          // top spike
+    const heat = K.addGlow(head, 0xffa040, 44, 0, 0, 0, 0);
+    const dust = K.addGlow(head, 0xe8dcc0, 54, 0, 0, 0, 0);
 
     function animate(u, e, time) {
       const sw = walk(u, e, time, 8, 0.45);
       const k = e.swing, c = e.castAnim, slot = e.castSlot;
       const ws = ease.windStrike(k, 0.45);
-      // Basic: heave the staff overhead and bring it crashing down.
-      let rz = 0.5 + sw * 0.3, rb = 0.6, pitch = PI - 0.2, lz = 0.3 - sw * 0.3, lb = 0.4, lean = 0, twist = 0;
-      if (k > 0) { rz = ws < 0 ? 0.5 - ws * 2.3 : 2.8 - ws * 1.6; rb = 0.2; pitch = ws < 0 ? PI - ws * 0.4 : PI - ws * (PI / 2 + 0.2); lz = rz * 0.8; lb = 0.3; lean = -ws * 0.2; }
-      let spin = 0;
-      if (c > 0) {
-        const b = ease.bump(c);
-        if (slot === 0) { rz = 1.3; rb = 0.1; pitch = PI / 2; spin = (1 - c) * PI * 2; lean = -0.1; }
-        if (slot === 1) { lean = -0.35 * b; rz = 0.9; pitch = PI / 2 + 0.4; }
-        if (slot === 2) { lz = 1.0 * b; lb = 1.2 * b; lean = -0.25 * b; }
-        if (slot === 3) { rz = 0.5 + b * 2.4; lz = 0.5 + b * 2.4; rb = lb = 0.1; pitch = PI; lean = 0.25 * b; }
+      // Idle / walking: the maul rests on the right shoulder, the left hand swinging free.
+      let rz = 0.55 + sw * 0.15, rb = 1.9, pitch = PI + 0.9, lz = 0.25 - sw * 0.35, lb = 0.35, lean = 0, lunge = 0;
+      // Basic: heave the maul overhead with both hands and bring it crashing down.
+      if (k > 0) {
+        rz = ws < 0 ? 0.55 - ws * 2.2 : 2.75 - ws * 1.75; rb = 0.25;
+        pitch = ws < 0 ? PI + 0.2 : PI - ws * (PI / 2 + 0.35);
+        lz = rz * 0.95; lb = 0.35; lean = -ws * 0.25; lunge = Math.max(0, ws) * 4;
       }
-      pose(u.armR, u.elbowR, rz, 0.2, rb, 1);
-      pose(u.armL, u.elbowL, lz, 0.3, lb, -1);
-      aim(staff, u.armR, u.elbowR, pitch);
-      // The lantern always hangs straight down from its hook, swaying.
-      lantern.rotation.z = -pitch + Math.sin(time * 3) * 0.2;
-      u.torso.rotation.z = lean; u.torso.rotation.y = twist;
-      u.hips.rotation.y = spin;
-      kettle.rotation.x = Math.sin(time * 5) * 0.3 * (e.moving ? 1 : 0.2);
-      const f = 0.85 + Math.sin(time * 11) * 0.12;
-      flame.scale.setScalar(40 * f);
-      light.intensity = 0.8 * f;
-      u.head.rotation.y = Math.sin(time * 0.7) * 0.1;
+      if (c > 0) {
+        const b = ease.bump(c), w = ease.windStrike(c, 0.4);
+        if (slot === 0) {
+          // Destructive Fury: a huge two-handed overhead blow that splits the ground in front.
+          rz = w < 0 ? 0.6 - w * 2.4 : 3.0 - w * 2.1; rb = 0.15; lz = rz; lb = 0.25;
+          pitch = w < 0 ? PI + 0.3 : PI - w * (PI / 2 + 0.5); lean = -w * 0.4; lunge = Math.max(0, w) * 7;
+        } else if (slot === 1) {
+          // Crushing Weight: plant the maul and roar, head thrown back.
+          rz = 0.9; rb = 0.3; pitch = 0.15; lz = 0.3 + b * 1.6; lb = 0.4; lean = 0.25 * b;
+        } else if (slot === 2) {
+          // Shockwave: stamp the iron butt of the haft into the ground.
+          rz = 1.0 - w * 0.4; rb = 0.6; pitch = PI - 0.1; lz = 1.0; lb = 0.5; lean = -w * 0.2;
+        } else if (slot === 3 && !e.dash) {
+          lean = -0.3 * b;   // Against All Odds: crouch to spring
+        }
+      }
+      // Mid-leap: the maul raised high overhead in both hands; a crushing slam as he lands.
+      if (e.dash && e.lift > 0) { rz = lz = 2.9; rb = lb = 0.15; pitch = PI + 0.4; lean = 0.15; u.slam = 1; }
+      else if (u.slam > 0) {
+        u.slam = Math.max(0, u.slam - 0.06);
+        const s = Math.sin(u.slam * PI * 0.5);
+        rz = lz = 1.2 + s * 1.4; rb = lb = 0.2; pitch = PI / 2 - 0.4 + s * 0.6; lean = -0.45 * (1 - u.slam * 0.5); lunge = 5;
+      }
+      pose(u.armR, u.elbowR, rz, 0.18, rb, 1);
+      pose(u.armL, u.elbowL, lz, 0.35, lb, -1);
+      aim(maul, u.armR, u.elbowR, pitch);
+      u.torso.rotation.z = lean;
+      u.hips.position.x = lunge;
+      u.head.rotation.z = slot === 1 && c > 0 ? 0.35 * ease.bump(c) : Math.sin(time * 1.1) * 0.03;
+      u.head.rotation.y = Math.sin(time * 0.7) * 0.08;
+      // Beard, scarf tails and cloak hang down whatever the lean, trailing back as he moves or leaps.
+      const trail = smoothTo(u, 'trail', e.moving ? (e.lift > 0 ? 0.9 : 0.4) : 0, 0.12);
+      beard.rotation.z = -lean - u.head.rotation.z + Math.sin(time * 2) * 0.04;
+      tails.forEach((t, i) => { t.rotation.z = -lean + trail * 0.6 + Math.sin(time * 6 + i) * 0.08 * (0.3 + trail); });
+      cloak.forEach((p, i) => {
+        p.rotation.z = -lean - trail * 0.7 - Math.sin(time * 5 + i * 1.3) * 0.06 * (0.4 + trail);
+        p.rotation.x = (i - 1) * 0.12;
+      });
+      // Crushing Weight: the maul head smoulders. Shockwave: dust swirls about it. Stack Up: the eyes burn brighter.
+      heat.material.opacity = e.state.crush > 0 ? 0.6 + Math.sin(time * 9) * 0.2 : 0;
+      dust.material.opacity = e.state.shock > 0 ? 0.35 + Math.sin(time * 6) * 0.12 : 0;
+      const st = (e.state.stacks || 0) / 8;
+      for (const m of eyes) m.scale.setScalar(1 + st * 0.8);
     }
-    return finish(root, 1.30, (_, e, t) => animate(u, e, t), [hide], { u });
+    return finish(root, 1.30, (_, e, t) => animate(u, e, t), [skin, hide], { u });
   };
 
   // =============================================================================================

@@ -542,3 +542,5 @@ body.split #minimapFrame { right: auto; left: 50%; transform: translateX(-50%); 
   /* Narrow screens: the minimap moves to the top so the two HUDs keep the bottom edge. */
   body.split #minimapFrame { bottom: auto; top: 64px; }
 }
+
+body.no-minimap #minimapFrame { display: none !important; }

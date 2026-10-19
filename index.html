@@ -43,6 +43,7 @@
     <div class="screen" data-screen="select" hidden>
       <h2>Choose Your Champion</h2>
       <p class="hint" id="selectHint">▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when everyone is ready.</p>
+      <div class="mapPick"><span class="k">Map</span><button type="button" class="prev" aria-label="Previous map">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next map">›</button></div>
       <div class="sides">
         <div class="pick you" data-side="west" data-key="west">
           <div class="label">West Army</div>
@@ -65,7 +66,6 @@
           <button type="button" class="readyBtn">Lock in</button>
         </div>
       </div>
-      <div class="mapPick"><span class="k">Map</span><button type="button" class="prev" aria-label="Previous map">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next map">›</button></div>
       <div class="actions"><button type="button" id="selectBack">Back</button><button type="button" id="beginLocal" disabled>Begin Battle</button></div>
     </div>
     <div class="screen" data-screen="net" hidden>
@@ -94,6 +94,7 @@
     <div class="screen" data-screen="lobby" hidden>
       <h2 id="lobbyTitle">Room</h2>
       <p class="hint" id="lobbyHint"></p>
+      <div class="mapPick" id="lobbyMap"><span class="k">Map</span><button type="button" class="prev" aria-label="Previous map">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next map">›</button></div>
       <div class="sides">
         <div class="team you" data-team="0">
           <div class="label">West Army</div>
@@ -109,7 +110,6 @@
           <button type="button" class="joinTeam">Join East</button>
         </div>
       </div>
-      <div class="mapPick" id="lobbyMap"><span class="k">Map</span><button type="button" class="prev" aria-label="Previous map">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next map">›</button></div>
       <div class="mine">
         <canvas class="preview" aria-label="Your hero preview"></canvas>
         <div class="body">
@@ -159,6 +159,7 @@
       <button type="button" data-act="dev"></button>
       <button type="button" data-act="controls"></button>
       <button type="button" data-act="confirm"></button>
+      <button type="button" data-act="minimap"></button>
       <button type="button" data-act="leave" hidden>Leave game</button>
       <div class="padState"></div>
       <div class="help"></div>

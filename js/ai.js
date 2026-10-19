@@ -36,7 +36,8 @@
   //   foe {range}: needs a foe to target (engage: with no foe there it blinks, so it also escapes)
   //   dash {range}: close on the enemy hero, or escape   blink {range}: escape only
   //   buff {radius}: while brawling   shield {radius}: while under fire   zone {radius}: rally/heal ground
-  //   summon {range}: raise fighters near foes   rewind: undo recent damage   twin: Geminate's form strike
+  //   summon {range}: raise fighters near foes   rewind: undo recent damage
+  //   twin / swarm / swap: the Geminate's form-dependent Q and W, and its form swap
   //   vanish: turn invisible to escape, or before jumping the enemy hero
   //   shadows: hits foes in our shadows   dark: while standing in our shadow mid-fight
   //   consume {range}: spends every shadow on one foe (worth more the more shadows there are)
@@ -44,12 +45,12 @@
     bannerspear: { q: { use: 'aoe', range: 500, radius: 150 }, w: { use: 'zone', radius: 300 }, e: { use: 'cone', range: 200, half: 0.9 }, r: { use: 'zone', radius: 500 } },
     boneshaper: { q: { use: 'summon', range: 350 }, w: { use: 'line', range: 750, width: 200 }, e: { use: 'zone', radius: 500 }, r: { use: 'summon', range: 300 } },
     deathwalker: { q: { use: 'aoe', range: 350, radius: 125 }, w: { use: 'shadows' }, e: { use: 'dark' }, r: { use: 'consume', range: 400 } },
-    geminate: { q: { use: 'twin' }, w: { use: 'dash', range: 280 }, e: { use: 'buff', radius: 220 }, r: { use: 'self', radius: 550 } },
+    geminate: { q: { use: 'twin' }, w: { use: 'swarm' }, e: { use: 'swap' }, r: { use: 'line', range: 600, width: 60 } },
     blinkblade: { q: { use: 'cone', range: 250, half: 0.7 }, w: { use: 'self', radius: 400 }, e: { use: 'buff', radius: 200 }, r: { use: 'vanish' } },
-    crushingtide: { q: { use: 'cone', range: 180, half: 0.95 }, w: { use: 'shield', radius: 150 }, e: { use: 'aoe', range: 400, radius: 170 }, r: { use: 'line', range: 900, width: 280 } },
+    crushingtide: { q: { use: 'self', radius: 150 }, w: { use: 'shield', radius: 400 }, e: { use: 'buff', radius: 200 }, r: { use: 'self', radius: 350 } },
     trapper: { q: { use: 'line', range: 620, width: 24, first: true }, w: { use: 'aoe', range: 340, radius: 50 }, e: { use: 'aoe', range: 440, radius: 130 }, r: { use: 'aoe', range: 500, radius: 210 } },
     pyroclast: { q: { use: 'line', range: 650, width: 28, first: true, splash: 100 }, w: { use: 'aoe', range: 420, radius: 150 }, e: { use: 'cone', range: 270, half: 0.62 }, r: { use: 'aoe', range: 650, radius: 240 } },
-    drifter: { q: { use: 'self', radius: 140 }, w: { use: 'dash', range: 360 }, e: { use: 'zone', radius: 200 }, r: { use: 'line', range: 1000, width: 240 } }
+    drifter: { q: { use: 'cone', range: 350, half: 0.6 }, w: { use: 'buff', radius: 200 }, e: { use: 'buff', radius: 200 }, r: { use: 'aoe', range: 600, radius: 100 } }
   };
 
   // Troop barracks, in the order the late game cycles through them (then our race's special ones).
@@ -544,11 +545,26 @@
       case 'self':
         return scored(G.foesInRadius(team, me.x, me.y, how.radius), me, false);
       case 'twin':
-        if (me.form === 'melee') return scored(G.foesInRadius(team, me.x, me.y, 140), me, false);
-        return bestOf(targets(600), e => {
+        if (me.form === 'melee') return scored(G.foesInRadius(team, me.x, me.y, G.geminate.TAILSPIN_R), me, false);
+        return bestOf(targets(G.m(8)), e => {
           const p = aimPoint(e);
-          return scored(G.foesInRadius(team, p.x, p.y, 300).sort((u, v) => worth(v) - worth(u)).slice(0, 2), p);
+          return scored(G.geminate.crescentFoes(me, Math.atan2(p.y - me.y, p.x - me.x)), p);
         });
+      case 'swarm':
+        if (me.form === 'melee') {
+          const around = sumWorth(G.foesInRadius(team, me.x, me.y, 250, { buildings: false }));
+          return hpLost(1.5) > me.maxHp * 0.04 || around >= 4 ? { score: 5 + around, x: me.x, y: me.y } : null;
+        }
+        return bestOf(targets(G.m(13)), e => {
+          const p = aimPoint(e), s = G.geminate.swarmSpot(me, p.x, p.y);
+          return scored(G.geminate.swarmFoes(me, s), s);
+        });
+      case 'swap': {
+        // Claws when foes crowd in (and we can take it), the swarm when they are at arm's length or we are hurting.
+        const close = sumWorth(G.foesInRadius(team, me.x, me.y, 160, { buildings: false }));
+        if (me.form === 'melee') return hpF < 0.35 || (!close && foe && foeD > 250 && foeD < 600) ? { score: 6, x: me.x, y: me.y } : null;
+        return hpF > 0.4 && (close >= 4 || (duel && foeD < 120)) ? { score: 6, x: me.x, y: me.y } : null;
+      }
       case 'foe': {
         if (how.engage && fleeing) { const s = escapePoint(how.range, foe); return s && { score: 8, x: s.x, y: s.y }; }
         const list = targets(how.range);

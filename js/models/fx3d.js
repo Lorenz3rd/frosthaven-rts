@@ -423,24 +423,64 @@
   };
 
   // ---------------------------------------------------------------------------------------------
-  // Geminate: spiraling shards
+  // Geminate: Drag Down's crescent rake, the Swarm cloud
   // ---------------------------------------------------------------------------------------------
-  FX.shards = {
+  FX.crescent = {
+    make(o) {
+      const grp = new THREE.Group(), geo = R.crescentGeo(o.c1, o.r1, o.c2, o.r2);
+      grp.add(new THREE.Mesh(geo, glowMat(0xd040b0, 0.55)));
+      const core = new THREE.Mesh(geo, glowMat(0xff8ae0, 0.18)); core.scale.setScalar(0.94); core.position.y = 0.3; grp.add(core);
+      // Swarm-claws: dark motes raking out along the crescent and back toward the Geminate.
+      o.claws = [];
+      for (let i = 0; i < 16; i++) {
+        const s = i % 2 ? K.glow(0xff6fd0, 26, 0.9) : new THREE.Sprite(new THREE.SpriteMaterial({ map: K.glowTex(), color: 0x2a1438, transparent: true, opacity: 0.9, depthWrite: false }));
+        if (!(i % 2)) s.scale.setScalar(22);
+        s.userData = { a: (i / 15 - 0.5) * 2.6 };
+        grp.add(s); o.claws.push(s);
+      }
+      grp.rotation.y = -o.angle;
+      return remember(at(grp, o.x, o.y, 3));
+    },
+    update(m, o) {
+      const k = o.t / o.dur;
+      setFade(m, 1 - k);
+      m.children[0].scale.setScalar(0.7 + Math.min(1, k * 5) * 0.3);
+      // Out to the outer rim, then dragged back in.
+      const reach = k < 0.4 ? k / 0.4 : 1 - (k - 0.4) / 0.6 * 0.6;
+      for (const s of o.claws) {
+        const a = s.userData.a, d = (o.c1 + o.r1 * Math.cos(a)) * reach;
+        s.position.set(d, 14 + Math.sin(k * Math.PI) * 18, -o.r1 * Math.sin(a) * 0.9 * reach);
+      }
+    }
+  };
+
+  // Swarm: a cloud of insects flies from the Geminate (x0, y0) onto a len × w patch and buzzes there.
+  FX.swarm = {
     make(o) {
       const grp = new THREE.Group();
-      for (const s of o.shards) {
-        const p = new THREE.Group();
-        add(p, g.oct(7), K.lit(s.color), 0, 0, 0, { sy: 2.2, shadow: false });
-        p.add(K.glow(s.color, 46, 0.9));
-        grp.add(p); s.mesh = p;
+      const patch = new THREE.Group(); patch.position.set(o.x, 0, o.y); patch.rotation.y = -o.angle; grp.add(patch);
+      add(patch, g.plane(1, 1), fadeMat(0x1a0a24, 0.6), 0, 1.3, 0, { rx: -Math.PI / 2, sx: o.w, sy: o.len, shadow: false });
+      add(patch, g.plane(1, 1), glowMat(0xd060ff, 0.2), 0, 1.6, 0, { rx: -Math.PI / 2, sx: o.w + 16, sy: o.len + 16, shadow: false });
+      o.bugs = [];
+      const c = Math.cos(o.angle), s = Math.sin(o.angle);
+      for (let i = 0; i < 40; i++) {
+        const dark = i % 3 !== 0;
+        const b = dark ? new THREE.Sprite(new THREE.SpriteMaterial({ map: K.glowTex(), color: 0x24102e, transparent: true, opacity: 0.95, depthWrite: false }))
+          : K.glow(i % 2 ? 0xff6fd0 : 0xb07cff, 16, 0.95);
+        b.scale.setScalar(dark ? 10 + Math.random() * 8 : 16);
+        // Landing spot inside the patch: along the aim (its short side), then across it (its long side).
+        const along = (Math.random() - 0.5) * o.w, side = (Math.random() - 0.5) * o.len;
+        b.userData = { tx: o.x + along * c - side * s, ty: o.y + along * s + side * c, delay: Math.random() * 0.2, ph: Math.random() * 6.28, h: 10 + Math.random() * 40 };
+        grp.add(b); o.bugs.push(b);
       }
-      return grp;
+      return remember(grp);
     },
     update(m, o, time) {
-      for (const s of o.shards) {
-        s.mesh.visible = !s.done;
-        s.mesh.position.set(s.x, s.h, s.y);
-        s.mesh.rotation.set(time * 8, time * 5, 0);
+      setFade(m, env(o, 0.05, 0.4));
+      for (const b of o.bugs) {
+        const u = b.userData, f = Math.min(1, Math.max(0, (o.t - u.delay) / 0.3)), e = f * f * (3 - 2 * f);
+        const jx = Math.sin(time * 17 + u.ph) * 10 * f, jy = Math.cos(time * 13 + u.ph * 2) * 10 * f;
+        b.position.set(G.lerp(o.x0, u.tx, e) + jx, u.h + Math.sin(e * Math.PI) * 60 + Math.sin(time * 21 + u.ph) * 4, G.lerp(o.y0, u.ty, e) + jy);
       }
     }
   };
@@ -898,7 +938,7 @@
     const grp = new THREE.Group();
     add(grp, g.ico(6, 1), K.lit(0xffffff), 0, 0, 0, { shadow: false });
     grp.add(K.glow(c, 60, 0.95));
-    const sat = K.glow(c === 0x6ff0e0 ? 0xff6fb8 : 0x6ff0e0, 22, 1); grp.add(sat);
+    const sat = K.glow(c === 0xa46cff ? 0xff6fd0 : 0xa46cff, 22, 1); grp.add(sat);
     grp.userData = { tick(m, p, time) { sat.position.set(0, Math.sin(time * 20) * 12, Math.cos(time * 20) * 12); } };
     return grp;
   };

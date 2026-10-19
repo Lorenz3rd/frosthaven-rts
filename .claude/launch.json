@@ -94,6 +94,50 @@
       ],
       "port": 8141,
       "autoPort": false
+    },
+    {
+      "name": "game-drifter",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8143"
+      ],
+      "port": 8143,
+      "autoPort": false
+    },
+    {
+      "name": "game-hood",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8145"
+      ],
+      "port": 8145,
+      "autoPort": false
+    },
+    {
+      "name": "game-pyro",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8147"
+      ],
+      "port": 8147,
+      "autoPort": false
+    },
+    {
+      "name": "game-geminate",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8149"
+      ],
+      "port": 8149,
+      "autoPort": false
     }
   ]
 }

@@ -58,6 +58,21 @@
   R.SUMMON_MODELS = {};    // squad kind -> fn(team) -> Group (soldier contract)
   R.FX = {};               // fx kind -> { make(o), update(m, o, time, dt) }
   R.PROJ = {};             // projectile style -> fn(p) -> Object3D
+  // A flat crescent on the ground, +x along its aim: inside the circle (c1 ahead, radius r1), outside
+  // (c2, r2). Built once per size (the Geminate's Drag Down preview and effect).
+  const crescents = new Map();
+  R.crescentGeo = function (c1, r1, c2, r2) {
+    const k = [c1, r1, c2, r2].join();
+    if (!crescents.has(k)) {
+      const xi = (c1 + c2) / 2 + (r1 * r1 - r2 * r2) / (2 * (c2 - c1)), yi = Math.sqrt(Math.max(0, r1 * r1 - (xi - c1) ** 2));
+      const p1 = Math.atan2(yi, xi - c1), p2 = Math.atan2(yi, xi - c2);
+      const s = new THREE.Shape();
+      s.absarc(c1, 0, r1, p1, -p1, true);
+      s.absarc(c2, 0, r2, -p2, p2, false);
+      crescents.set(k, new THREE.ShapeGeometry(s, 32).rotateX(-Math.PI / 2));
+    }
+    return crescents.get(k);
+  };
   // Each race's special troops and their barracks (js/models/special.js): only that race fields them.
   R.SPECIAL_BUILDINGS = {}; // building type -> fn(slot, base, team)
   R.SPECIAL_UNITS = {};     // squad kind -> fn(team) -> Group (soldier contract)
@@ -3306,6 +3321,8 @@
           const m = castMesh(castGeo.plane, c, 0.45 * glow, 2.6); m.position.set(s.x, 2.6, s.y); m.rotation.y = -s.a; m.scale.set(s.len, 1, s.w);
         } else if (s.t === 'cone') {
           const m = castMesh(coneGeo(s.arc), c, 0.4 * glow, 2.6); m.position.set(s.x, 2.6, s.y); m.rotation.y = -s.a; m.scale.set(s.r, 1, s.r);
+        } else if (s.t === 'crescent') {
+          const m = castMesh(R.crescentGeo(s.c1, s.r1, s.c2, s.r2), c, 0.45 * glow, 2.6); m.position.set(s.x, 2.6, s.y); m.rotation.y = -s.a;
         }
       }
     }

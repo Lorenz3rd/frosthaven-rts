@@ -14,6 +14,7 @@
     rangedDepth++;
     try { return fn(); } finally { rangedDepth--; }
   };
+  G.inRanged = () => rangedDepth > 0;
 
   class Entity {
     constructor(x, y, r, maxHp, team) {
@@ -159,6 +160,7 @@
     moveTo(x, y) { this.target = { x, y }; this.stuckTime = 0; }
     takeDamage(amount, src) {
       if (G.dev) return 0;
+      if (this.def.onHurt && !this.dead && (amount = this.def.onHurt(this, amount, src) ?? amount) <= 0) return 0;
       const dealt = super.takeDamage(amount, src);
       if (src && src.hero) G.noteDamage(src.hero, this, dealt);
       return dealt;

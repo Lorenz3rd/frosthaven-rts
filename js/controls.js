@@ -23,6 +23,11 @@
   // Ability confirm before cast: the first press of an ability shows where it will land (G.castPreview),
   // the same button again casts it, anything else cancels it.
   G.confirmCast = load('frost.confirmCast', '0') === '1';
+  G.showMinimap = load('frost.showMinimap', '1') === '1';
+  G.setShowMinimap = function (on) {
+    G.showMinimap = on; save('frost.showMinimap', on ? '1' : '0');
+    document.body.classList.toggle('no-minimap', !on);
+  };
   G.setConfirmCast = function (on) {
     G.confirmCast = on; save('frost.confirmCast', on ? '1' : '0');
     if (!on) for (const p of G.players || []) p.pendingCast = null;
@@ -95,6 +100,9 @@
     const cc = el.querySelector('[data-act="confirm"]');
     cc.textContent = 'Ability confirm before cast: ' + (G.confirmCast ? 'On' : 'Off');
     cc.classList.toggle('on', G.confirmCast);
+    const mm = el.querySelector('[data-act="minimap"]');
+    mm.textContent = 'Mini map: ' + (G.showMinimap ? 'On' : 'Off');
+    mm.classList.toggle('on', G.showMinimap);
     if (split()) {
       el.querySelector('[data-act="dev"]').textContent = 'Developer mode: ' + (G.dev ? 'On' : 'Off');
       el.querySelector('[data-act="dev"]').classList.toggle('on', G.dev);
@@ -141,6 +149,7 @@
       for (const h of G.players.map(p => p.hero)) G.floaters.push({ x: h.x, y: h.y - 40, text: 'Developer mode ' + (G.dev ? 'on' : 'off'), t: 0, color: '#ffd27a' });
     }
     if (name === 'confirm') { G.setConfirmCast(!G.confirmCast); render(); }
+    if (name === 'minimap') { G.setShowMinimap(!G.showMinimap); render(); }
     if (name === 'controls') { G.setControlScheme(G.controlScheme === 'pad' ? 'mkb' : 'pad'); render(); }
   }
 
@@ -150,6 +159,7 @@
       el.addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) act(b.dataset.act); });
       document.getElementById('pauseBtn').addEventListener('click', () => G.setPaused(!G.paused));
       document.body.classList.toggle('dev-mode', G.dev);
+      document.body.classList.toggle('no-minimap', !G.showMinimap);
       document.body.classList.toggle('pad-scheme', G.controlScheme === 'pad');
     },
 

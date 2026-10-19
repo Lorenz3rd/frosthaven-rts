@@ -657,13 +657,12 @@
           v.t += dt;
           if (v.t > 1.6) {
             v.t = 0; v.cycle++;
-            if (v.cycle % 3 === 0) { e.castSlot = (v.cycle / 3 - 1) % 4; e.castAnim = 1; if (e.def.id === 'geminate' && e.castSlot === 1) e.form = e.form === 'melee' ? 'ranged' : 'melee'; if (e.castSlot === 2) e.state.orbit = 2; }
+            if (v.cycle % 3 === 0) { e.castSlot = (v.cycle / 3 - 1) % 4; e.castAnim = 1; if (e.def.id === 'geminate' && e.castSlot === 2) e.form = e.form === 'melee' ? 'ranged' : 'melee'; if (e.castSlot === 2) e.state.orbit = 2; }
             else { e.swing = 1; e.swingAlt = !e.swingAlt; }
           }
           e.swing = Math.max(0, e.swing - dt * 2.5);
           e.castAnim = Math.max(0, e.castAnim - dt * 1.6);
           e.state.orbit = Math.max(0, e.state.orbit - dt);
-          e.state.tide = e.cycle % 6;
           const u = v.hero.userData;
           u.animate(u, e, time, dt);
         }

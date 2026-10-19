@@ -109,13 +109,16 @@
     const W = 8600, H = 6400, CX = W / 2, CY = H / 2, LU = CX - 60, LV = CY - 60;
     const K = 1 / Math.hypot(1 / LU, 1 / LV);   // world distance per unit of the diamond's 1 - |u|/LU - |v|/LV
     const LEDGE = 570;                            // ledge radius around a base center (base radius + 60)
+    // The middle and flank bases of each side's row (offsets from the center). They stand far enough apart
+    // that a crevasse between them leaves a walkway about 3.5 m wide on either side of it.
+    const MID = { u: 1150, v: 0 }, FLANK = { u: 1900, v: 1400 };
     const bases = [];
     for (const side of [G.TEAM.PLAYER, G.TEAM.ENEMY]) {
       const s = side === G.TEAM.PLAYER ? -1 : 1;
       bases.push({ x: CX + s * 3600, y: CY, side, hq: true });
-      bases.push({ x: CX + s * 1250, y: CY, side, front: true });
-      bases.push({ x: CX + s * 1850, y: CY - 1150, side });
-      bases.push({ x: CX + s * 1850, y: CY + 1150, side });
+      bases.push({ x: CX + s * MID.u, y: CY, side, front: true });
+      bases.push({ x: CX + s * FLANK.u, y: CY - FLANK.v, side });
+      bases.push({ x: CX + s * FLANK.u, y: CY + FLANK.v, side });
     }
     bases.push({ x: CX, y: CY - 2600, side: null, slots: 4 }, { x: CX, y: CY + 2600, side: null, slots: 4 });
 
@@ -124,7 +127,7 @@
     const chasms = [];
     for (const s of [-1, 1])
       for (const t of [-1, 1]) {
-        const c = { x: CX + s * 1250, y: CY }, f = { x: CX + s * 1850, y: CY + t * 1150 };
+        const c = { x: CX + s * MID.u, y: CY }, f = { x: CX + s * FLANK.u, y: CY + t * FLANK.v };
         const len = G.dist(c.x, c.y, f.x, f.y);
         let ux = (f.y - c.y) / len, uy = -(f.x - c.x) / len;
         if (ux * s > 0) { ux = -ux; uy = -uy; }   // the axis runs from its back end (near the camp) to its front
