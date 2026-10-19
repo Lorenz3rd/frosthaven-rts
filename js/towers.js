@@ -17,6 +17,7 @@
     const out = [];
     for (const e of G.hostilesOf(b.team)) {
       if (w.targets === 'units' && !(e instanceof G.Entity)) continue;
+      if (w.targets === 'buildings' && e instanceof G.Entity) continue;
       if (!G.canShoot(b.x, b.y, e)) continue;
       const d = G.dist(b.x, b.y, e.x, e.y);
       if (d <= w.range + (e.r || 0) && d >= w.minRange) out.push({ e, d });

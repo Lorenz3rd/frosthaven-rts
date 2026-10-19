@@ -16,17 +16,71 @@
     terrain.width = WIDTH * dpr; terrain.height = H * dpr;
     const t = terrain.getContext('2d');
     t.scale(dpr, dpr);
-    t.fillStyle = '#5d6168'; t.fillRect(0, 0, WIDTH, H);
+    const L = G.map.layout, sh = L.shape;
+    t.fillStyle = sh ? '#121418' : '#5d6168'; t.fillRect(0, 0, WIDTH, H);
+    // Coast: the channel and the inlet in sea blue, the bridges over them.
+    const co = L.coast;
+    if (co) {
+      t.fillStyle = '#5f646b'; t.fillRect(0, 0, WIDTH, H);
+      t.fillStyle = '#1f3644';
+      t.fillRect((co.CX - co.B) * scale, 0, 2 * co.B * scale, H);
+      t.fillRect((co.CX - co.L) * scale, (co.CY - co.BA) * scale, 2 * co.L * scale, 2 * co.BA * scale);
+      for (const p of co.tips) { t.beginPath(); t.arc(p.x * scale, p.y * scale, co.BA * scale, 0, Math.PI * 2); t.fill(); }
+      t.fillStyle = '#7a5c3e';
+      for (const by of co.BRIDGES) t.fillRect((co.CX - co.B - 40) * scale, (by - co.BW / 2) * scale, (2 * co.B + 80) * scale, co.BW * scale);
+    }
+    // Docks: the basin and the channels in sea blue, the ship's deck and the bridges in timber.
+    const hb = L.harbor;
+    if (hb) {
+      t.fillStyle = '#5f646b'; t.fillRect(0, 0, WIDTH, H);
+      t.fillStyle = '#1f3644';
+      t.beginPath(); t.arc(hb.CX * scale, hb.CY * scale, hb.RM * scale, 0, Math.PI * 2); t.fill();
+      for (const [ax, ay, bx, by] of hb.capsules) {
+        t.fillRect((ax - hb.B) * scale, Math.min(ay, by) * scale, 2 * hb.B * scale, Math.abs(by - ay) * scale);
+        const tip = ay < hb.CY ? by : ay;
+        t.beginPath(); t.arc(ax * scale, tip * scale, hb.B * scale, 0, Math.PI * 2); t.fill();
+      }
+      t.fillStyle = '#7a5c3e';
+      t.beginPath(); t.ellipse(hb.CX * scale, hb.CY * scale, hb.SB * scale, hb.SA * scale, 0, 0, Math.PI * 2); t.fill();
+      for (const k of hb.bridges) {
+        t.save(); t.translate(k.ax * scale, k.ay * scale); t.rotate(Math.atan2(k.uy, k.ux));
+        t.fillRect(0, -hb.BW / 2 * scale, k.len * scale, hb.BW * scale);
+        t.restore();
+      }
+    }
+    // Mountain: the summit (diamond plus the round ledges under its bases) over the drop.
+    if (sh) {
+      const { CX, CY, LU, LV } = sh.diamond;
+      t.fillStyle = '#62676f';
+      t.beginPath();
+      t.moveTo((CX - LU) * scale, CY * scale); t.lineTo(CX * scale, (CY - LV) * scale);
+      t.lineTo((CX + LU) * scale, CY * scale); t.lineTo(CX * scale, (CY + LV) * scale); t.closePath();
+      for (const b of L.bases) { t.moveTo((b.x + sh.ledge) * scale, b.y * scale); t.arc(b.x * scale, b.y * scale, sh.ledge * scale, 0, Math.PI * 2); }
+      t.fill('nonzero');
+    }
     t.fillStyle = 'rgba(125,147,168,0.45)';
     for (const p of G.map.ice) {
       t.beginPath(); t.ellipse(p.x * scale, p.y * scale, p.rx * scale, p.ry * scale, p.rot, 0, Math.PI * 2); t.fill();
     }
-    t.fillStyle = '#7f95a8';
-    t.fillRect((G.map.w / 2 - 65) * scale, 0, Math.max(2, 130 * scale), H);
-    t.fillStyle = '#26262a';
-    for (const k of G.map.rocks) { t.beginPath(); t.arc(k.x * scale, k.y * scale, Math.max(1.2, k.r * scale), 0, Math.PI * 2); t.fill(); }
+    // Frosthaven: the roads, then the frozen river across them.
+    if (L.roads) {
+      t.strokeStyle = 'rgba(120,98,72,0.75)'; t.lineWidth = Math.max(2, 150 * scale); t.lineCap = 'round';
+      for (const [ax, ay, bx, by] of L.roads) { t.beginPath(); t.moveTo(ax * scale, ay * scale); t.lineTo(bx * scale, by * scale); t.stroke(); }
+    }
+    if (L.river) {
+      t.fillStyle = '#7f95a8';
+      t.fillRect((G.map.w / 2 - 65) * scale, 0, Math.max(2, 130 * scale), H);
+    }
+    // Crevasses: black slashes.
+    t.fillStyle = '#050608';
+    for (const c of G.map.chasms) {
+      t.beginPath(); t.ellipse(c.x * scale, c.y * scale, c.a * scale, Math.max(1.5, c.b * scale), Math.atan2(c.uy, c.ux), 0, Math.PI * 2); t.fill();
+    }
+    // Rocks (Frosthaven: the cabins and woodpiles).
+    t.fillStyle = L.village ? '#3a2a1e' : '#26262a';
+    for (const k of G.map.rocks) { if (k.mast) continue; t.beginPath(); t.arc(k.x * scale, k.y * scale, Math.max(1.2, k.r * scale), 0, Math.PI * 2); t.fill(); }
     if (G.map.trees) {
-      t.fillStyle = 'rgba(20,16,12,0.55)';
+      t.fillStyle = 'rgba(16,30,20,0.7)';
       for (const tr of G.map.trees) t.fillRect(tr.x * scale - 0.75, tr.y * scale - 0.75, 1.5, 1.5);
     }
   }

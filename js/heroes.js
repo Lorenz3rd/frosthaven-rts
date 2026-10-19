@@ -67,8 +67,8 @@
     id: 'bannerspear', name: 'Bannerspear', lore: 'Human', role: 'Melee',
     color: 0xe8c060, css: '#e8c060', r: 19, barH: 115,
     desc: 'A shield-and-spear tactician who fights at the head of the line, plants war banners and never goes anywhere without her squire Charlie.',
-    hp: 750, speed: 172,
-    basic: { damage: 40, range: 46, cooldown: 1.05, impact: 0.14 },
+    hp: 1500, speed: 172,
+    basic: { damage: 75, range: 46, cooldown: 1.05, impact: 0.14 },
     passive: { name: 'Charlie', icon: '⛨', desc: `Charlie, her squire (200 HP, no attack), keeps pace about 3 m away and always steps between her and the nearest enemy. He heals 1 HP per second and returns ${CHARLIE_RESPAWN}s after falling.` },
     init(h) { h.state.charlie = null; h.state.charlieT = 0; },
     update(h, dt) {
@@ -138,15 +138,15 @@
     id: 'boneshaper', name: 'Boneshaper', lore: 'Aesther', role: 'Ranged',
     color: 0x8fe8a8, css: '#9ff0b8', r: 18, barH: 110,
     desc: 'A grave-robbing necromancer who raises skeletons (Doug and Doug, mostly), curses the living and rolls the dead into a great ball of bone.',
-    hp: 450, speed: 168,
-    basic: { damage: 40, range: G.m(8), cooldown: 1.15, ranged: true, projectile: 'boneShard', speed: 850, muzzle: 62, color: '#cfeed8' },
-    passive: { name: 'Rally the Dead', icon: '☠', desc: 'Her skeletons and Bone Balls within 12 m of her take 20% less damage.' },
+    hp: 1200, speed: 168,
+    basic: { damage: 75, range: G.m(8), cooldown: 1.15, ranged: true, projectile: 'boneShard', speed: 850, muzzle: 62, color: '#cfeed8' },
+    passive: { name: 'Rally the Dead', icon: '☠', desc: 'Her skeletons and Bone Balls within 12 m of her take 30% less damage.' },
     init(h) { h.state.backAgain = 0; h.state.rallied = 0; },
     update(h, dt) {
       let n = 0;
       for (const sq of G.passiveOn(h) ? G.squads : []) {
         if (sq.summoner !== h || !UNDEAD.has(sq.kind)) continue;
-        for (const s of sq.alive) if (G.dist(s.x, s.y, h.x, h.y) <= RALLY_RANGE) { G.addBuff(s, 'rallyDead', 0.2, { armor: 0.2 }); n++; }
+        for (const s of sq.alive) if (G.dist(s.x, s.y, h.x, h.y) <= RALLY_RANGE) { G.addBuff(s, 'rallyDead', 0.2, { armor: 0.3 }); n++; }
       }
       h.state.rallied = n;
       if (h.state.backAgain > 0) {
@@ -168,7 +168,7 @@
     passiveText: h => (h.state.rallied ? '×' + h.state.rallied : ''),
     abilities: [
       { key: 'q', name: 'Doug & Doug', icon: '☗', cooldown: 12, range: 350, aim: 'point',
-        desc: `Raises two Skeleton warriors, Doug and Doug (70 HP, 15 damage each), that fight for ${SKELETON_LIFE}s.`,
+        desc: `Raises five Skeleton warriors, every one of them Doug (70 HP, 15 damage each), that fight for ${SKELETON_LIFE}s.`,
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 350); h.facing = angleTo(h, p.x, p.y); h.playCast(0);
           G.addFx('grave', { x: p.x, y: p.y, r: 70, dur: 1 });
@@ -179,7 +179,7 @@
           return true;
         } },
       { key: 'w', name: "Death's Curse", icon: '☁', cooldown: 10, range: G.m(15), aim: 'dir',
-        desc: 'Sends a dark cloud (2 m radius) drifting slowly 15 m forward. Every foe it touches takes 15 damage and is slowed 50% and attacks 50% slower for 2s.',
+        desc: 'Sends a dark cloud (2 m radius) drifting slowly 15 m forward. Every foe it touches takes 15 damage and is slowed 50% and attacks 50% slower for 4s.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(1);
           const len = G.m(15), speed = G.m(3);
@@ -191,16 +191,16 @@
               for (const e of G.foesInRadius(h.team, o.x, o.y, o.r)) {
                 if (o.hit.has(e)) continue;
                 o.hit.add(e);
-                G.hurt(h, e, 15, { color: '#b8a0d8' }); G.slow(e, 0.5, 2); G.addBuff(e, 'curse', 2, { atk: -0.5 });
+                G.hurt(h, e, 15, { color: '#b8a0d8' }); G.slow(e, 0.5, 4); G.addBuff(e, 'curse', 4, { atk: -0.5 });
               }
             } });
           return true;
         } },
       { key: 'e', name: 'Back Again', icon: '⚰', cooldown: 20, range: 0, aim: 'self',
-        desc: 'For 3s, every ally (other than skeletons) that dies within 10 m of her rises again as a Skeleton warrior. Passive — Rally the Dead: her skeletons and Bone Balls within 12 m take 20% less damage.',
+        desc: 'For 5s, every ally (other than skeletons) that dies within 10 m of her rises again as a Skeleton warrior. Passive — Rally the Dead: her skeletons and Bone Balls within 12 m take 30% less damage.',
         cast(h) {
           h.playCast(2);
-          h.state.backAgain = 3;
+          h.state.backAgain = 5;
           G.addFx('ring', { x: h.x, y: h.y, r0: 30, r1: BACK_AGAIN_RANGE, dur: 0.5, color: 0x9ff0b8 });
           G.burst(h.x, h.y, '#9ff0b8', 24, 220);
           return true;
@@ -248,8 +248,8 @@
     id: 'deathwalker', name: 'Deathwalker', lore: 'Valrath', role: 'Melee',
     color: 0xa47cff, css: '#b28cff', r: 18, barH: 108,
     desc: 'A horned reaper who walks between shadows, leaving a pool of night behind every kill and growing deadlier with each.',
-    hp: 450, speed: 180,
-    basic: { damage: 40, range: 44, cooldown: 1.1, impact: 0.14 },
+    hp: 1350, speed: 180,
+    basic: { damage: 75, range: 44, cooldown: 1.1, impact: 0.14 },
     passive: { name: 'Night Comes', icon: '☾', desc: `Every enemy it kills leaves a shadow (${SHADOW_R / G.UNITS_PER_METER} m radius) for ${SHADOW_LIFE}s, up to ${MAX_SHADOWS} at a time; a new one replaces the oldest. Deals 5% more damage for each active shadow.` },
     init(h) { h.state.dark = 0; h.state.inDark = false; },
     update(h, dt) {
@@ -328,8 +328,8 @@
   // =====================================================================================
   // 4. Geminate — Harrower swarm of two minds (ranged / melee forms)
   // =====================================================================================
-  const GEM_RANGED = { damage: 19, range: 400, cooldown: 0.95, ranged: true, projectile: 'twinOrb', speed: 950, muzzle: 48, color: '#6ff0e0' };
-  const GEM_MELEE = { damage: 30, range: 30, cooldown: 0.85, impact: 0.1 };
+  const GEM_RANGED = { damage: 75, range: 400, cooldown: 0.95, ranged: true, projectile: 'twinOrb', speed: 950, muzzle: 48, color: '#6ff0e0' };
+  const GEM_MELEE = { damage: 75, range: 30, cooldown: 0.85, impact: 0.1 };
   function setForm(h, f) {
     if (h.form === f) return;
     h.form = f;
@@ -340,7 +340,7 @@
     id: 'geminate', name: 'Geminate', lore: 'Harrower', role: 'Ranged / Melee',
     color: 0x6ff0e0, css: '#6ff0e0', r: 18, barH: 108,
     desc: 'Two insect minds in one chitin shell, shifting between a far-casting form and a whirling blade form.',
-    hp: 500, speed: 185, startForm: 'ranged',
+    hp: 1350, speed: 185, startForm: 'ranged',
     basic: GEM_RANGED,
     formBasic: h => (h.form === 'melee' ? GEM_MELEE : GEM_RANGED),
     passive: { name: 'Duality', icon: '☯', desc: 'Ranged form moves 15% faster. Melee form heals for 15% of damage dealt.' },
@@ -453,8 +453,8 @@
     id: 'blinkblade', name: 'Blinkblade', lore: 'Quatryl', role: 'Melee',
     color: 0x7fd8ff, css: '#8fdcff', r: 16, barH: 90,
     desc: 'A tiny inventor with a time-folding engine on her back and a blade that is never quite where you look.',
-    hp: 600, speed: 205,
-    basic: { damage: 40, range: 26, cooldown: 0.85, impact: 0.08 },
+    hp: 1350, speed: 205,
+    basic: { damage: 75, range: 26, cooldown: 0.85, impact: 0.08 },
     passive: { name: 'Charge Up', icon: '⚡', desc: `Builds ${CHARGE_RATE} charge per second (up to ${CHARGE_MAX}). Using any ability speeds her up, burning ${CHARGE_DRAIN} charge per second until it runs out: Poison Dagger and Stab Them All recharge twice as fast, +80% move speed and +20% basic attack damage.` },
     init(h) { h.state.charge = 0; h.state.speeding = false; h.state.cutting = 0; h.state.invis = 0; h.state.ambush = 0; h.invisible = false; },
     update(h, dt) {
@@ -565,8 +565,8 @@
     id: 'crushingtide', name: 'Crushing Tide', lore: 'Lurker', role: 'Melee',
     color: 0x3fc8d8, css: '#5fd8e8', r: 23, barH: 98,
     desc: 'A colossal crab-knight of the deep who breaks lines with its crusher claw and drowns armies in the tide.',
-    hp: 780, speed: 160,
-    basic: { damage: 28, range: 34, cooldown: 1.3, impact: 0.2 },
+    hp: 1500, speed: 160,
+    basic: { damage: 75, range: 34, cooldown: 1.3, impact: 0.2 },
     passive: { name: 'Rising Tide', icon: '≈', desc: 'Each basic attack hit adds a Tide stack for 5s (max 5). Each stack gives 6% damage reduction.' },
     init(h) { h.state.tide = 0; h.state.tideT = 0; },
     update(h, dt) { if (h.state.tide && (h.state.tideT -= dt) <= 0) h.state.tide = 0; },
@@ -640,8 +640,8 @@
     id: 'trapper', name: 'Trapper', lore: 'Vermling', role: 'Ranged',
     color: 0xd8b060, css: '#d8b060', r: 16, barH: 90,
     desc: 'A wiry rat-folk hunter with a repeating crossbow, a harpoon gun and more steel jaws than sense.',
-    hp: 460, speed: 188,
-    basic: { damage: 18, range: 430, cooldown: 1.0, ranged: true, projectile: 'quarrel', speed: 1150, muzzle: 34, color: '#e8d8a0' },
+    hp: 1200, speed: 188,
+    basic: { damage: 75, range: 430, cooldown: 1.0, ranged: true, projectile: 'quarrel', speed: 1150, muzzle: 34, color: '#e8d8a0' },
     passive: { name: 'Predator', icon: '⌖', desc: 'Basic attacks deal 50% more damage to rooted, stunned or slowed foes.' },
     onBasicHit(h, t, dmg) { return t.impaired && G.passiveOn(h) ? dmg * 1.5 : dmg; },
     passiveText: h => String(G.fx.filter(o => o.kind === 'trap' && o.owner === h && !o.sprung).length || ''),
@@ -708,8 +708,8 @@
     id: 'pyroclast', name: 'Pyroclast', lore: 'Savvas', role: 'Ranged',
     color: 0xff6a20, css: '#ff8a40', r: 18, barH: 107,
     desc: 'A living shard of the world’s molten heart, cracked obsidian over a furnace that never cools.',
-    hp: 450, speed: 175,
-    basic: { damage: 22, range: 400, cooldown: 1.2, ranged: true, projectile: 'ember', speed: 850, muzzle: 52, color: '#ff9a40' },
+    hp: 1350, speed: 175,
+    basic: { damage: 75, range: 400, cooldown: 1.2, ranged: true, projectile: 'ember', speed: 850, muzzle: 52, color: '#ff9a40' },
     passive: { name: 'Kindling', icon: '♨', desc: "All of the Pyroclast's damage sets foes ablaze: 6 damage per second for 3s (refreshes)." },
     afterDamage(h, t) { if (G.passiveOn(h)) G.burn(t, 6, 3, 'kindling', '#ff9a40', h); },
     abilities: [
@@ -775,8 +775,8 @@
     id: 'drifter', name: 'Drifter', lore: 'Inox', role: 'Melee',
     color: 0xf0c070, css: '#f0c070', r: 21, barH: 120,
     desc: 'A horned wanderer hauling a whole camp on his back, who swings a lantern-hung walking staff like a battering ram.',
-    hp: 700, speed: 168,
-    basic: { damage: 30, range: 36, cooldown: 1.3, impact: 0.2 },
+    hp: 1500, speed: 168,
+    basic: { damage: 75, range: 36, cooldown: 1.3, impact: 0.2 },
     passive: { name: 'Long Road', icon: '⛰', desc: 'After walking for 2s, gains Momentum: +25% move speed, and the next basic attack deals 80% more damage and stuns for 0.6s.' },
     init(h) { h.state.walk = 0; h.state.momentum = false; },
     update(h, dt) {

@@ -25,18 +25,17 @@
     const heroDef = G.heroById(west.hero || 'bannerspear');
     if (net) G.dev = false;   // developer cheats stay out of shared games (not saved)
 
+    G.map.use(cfg.map);
     G.createBases();
     G.createCommandCenters();
     G.resetUnlocks();
-    // Spawn by the center of the middle-front base on the player's side.
-    const front = G.bases.find(b => b.side === G.TEAM.PLAYER && b.x === G.BASE_COLS[1] && b.y === G.map.h / 2);
-    const HERO_SPAWN = { x: front.x + 110, y: front.y + 40 };  // just beside the brazier
-    const enemyFront = G.bases.find(b => b.side === G.TEAM.ENEMY && b.x === G.map.w - G.BASE_COLS[1] && b.y === G.map.h / 2);
-    const FOE_SPAWN = { x: enemyFront.x - 110, y: enemyFront.y + 40 };
-    // Sandbox: training dummies stand around the river in no-man's-land.
-    const mid = G.map.w / 2;
+    // Spawn by the Command Center's base on each side.
+    const HERO_SPAWN = G.map.spawnPoint(G.TEAM.PLAYER, 0);
+    const FOE_SPAWN = G.map.spawnPoint(G.TEAM.ENEMY, 0);
+    // Sandbox: training dummies stand around the middle of no-man's-land.
+    const mid = G.map.w / 2, midY = G.map.h / 2;
     const DUMMY_SPOTS = single || local || net ? [] : [
-      { x: mid - 300, y: 1000 }, { x: mid + 300, y: 1600 }, { x: mid - 300, y: 2260 }, { x: mid + 300, y: 2860 }
+      { x: mid - 300, y: midY - 930 }, { x: mid + 300, y: midY - 330 }, { x: mid - 300, y: midY + 330 }, { x: mid + 300, y: midY + 930 }
     ];
 
     G.map.generate(1337, [
@@ -45,8 +44,8 @@
       ...DUMMY_SPOTS.map(p => ({ x: p.x, y: p.y, r: 90 }))
     ]);
 
-    // Network games and local multiplayer: up to three heroes a side, one by each front base (middle, then
-    // top, then bottom). A network host makes them all; a client gets them (and the rest of the world) from
+    // Network games and local multiplayer: up to three heroes a side, at the map's spawn points (Frosthaven:
+    // one by each rear base, middle, then top, then bottom). A network host makes them all; a client gets them (and the rest of the world) from
     // the host's first snapshot.
     let hero = null, localHeroes = [];
     const respawns = [];
@@ -85,12 +84,7 @@
     G.hero = hero;
     // Neutral creatures roam no-man's-land (a network client gets them from the host).
     if (!netClient) G.spawnCreatures();
-    function netSpawn(team, i) {
-      const ys = [G.map.h / 2, G.map.h / 2 - 1280, G.map.h / 2 + 1280];
-      const x = team === G.TEAM.PLAYER ? G.BASE_COLS[1] : G.map.w - G.BASE_COLS[1];
-      const b = G.bases.find(b => b.side === team && b.x === x && b.y === ys[i]);
-      return { x: b.x + (team === G.TEAM.PLAYER ? 110 : -110), y: b.y + 40 };
-    }
+    function netSpawn(team, i) { return G.map.spawnPoint(team, i); }
 
     // Single player: the CPU hero holds the east. The sandbox enemy has no builder: give it a barracks in
     // its front-middle base so squads have a foe.
@@ -103,6 +97,7 @@
       G.entities.push(foe);
       G.ai.start(foe, cfg.difficulty, FOE_SPAWN);
     } else {
+      const enemyFront = G.bases.find(b => b.side === G.TEAM.ENEMY && b.front);
       G.addBuilding(enemyFront, enemyFront.slots[4], 'barracks', G.TEAM.ENEMY);
     }
     // Fallen heroes rise at their spawn after 5s.

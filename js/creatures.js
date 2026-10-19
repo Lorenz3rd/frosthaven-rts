@@ -15,18 +15,8 @@
   const LEASH = G.m(14);               // a chase ends this far from where it started
   const COINS_MIN = 20, COINS_MAX = 40;
   const SPAWN_CLEAR = G.m(15);         // replacements appear at least this far from any hero
-  const MARGIN = 150;                  // zone edge inset from the front bases and the map edge
-  const LANE_HALF = 550;               // half the height of the middle lane they stay out of
-
-  // The two roaming zones { x0, x1, y0, y1 }: no-man's-land above and below the middle lane.
-  function zones() {
-    const m = G.map, frontEdge = G.BASE_COLS[1] + G.bases[0].r;
-    const x0 = frontEdge + MARGIN, x1 = m.w - frontEdge - MARGIN;
-    return [
-      { x0, x1, y0: MARGIN, y1: m.h / 2 - LANE_HALF },
-      { x0, x1, y0: m.h / 2 + LANE_HALF, y1: m.h - MARGIN }
-    ];
-  }
+  // The two roaming zones { x0, x1, y0, y1 }, set by the map: no-man's-land above and below the middle lane.
+  const zones = () => G.map.zones();
   const inZone = (z, x, y) => x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1;
   const rand = (a, b) => a + Math.random() * (b - a);
 

@@ -15,6 +15,12 @@ window.Game = window.Game || {};
   G.clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   G.dist = (ax, ay, bx, by) => Math.hypot(bx - ax, by - ay);
   G.lerp = (a, b, t) => a + (b - a) * t;
+  // Distance from point (px, py) to segment (ax, ay)-(bx, by).
+  G.segDist = function (px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1;
+    const t = G.clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  };
 
   // Deterministic RNG so the map is the same every load.
   G.rng = function (seed) {

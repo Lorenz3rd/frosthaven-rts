@@ -46,7 +46,7 @@
 
   const net = G.net = {
     role: null,            // 'host' | 'client' | null
-    lobby: null,           // { room, races: [west, east], players: [{ id, name, team, hero, host, connected }], started }
+    lobby: null,           // { room, races: [west, east], map, players: [{ id, name, team, hero, host, connected }], started }
     myId: null,
     onChange: null,        // menu: lobby changed, or { error | notice, left, report } (left: back to the room screen)
     onStatus: null,        // menu: progress while creating or joining a room
@@ -356,7 +356,7 @@
   // ---------------------------------------------------------------------------
   const players = () => (net.lobby ? net.lobby.players : []);
   const publicLobby = () => ({
-    room: net.lobby.room, races: net.lobby.races, started: net.lobby.started,
+    room: net.lobby.room, races: net.lobby.races, map: net.lobby.map, started: net.lobby.started,
     players: players().map(p => ({ id: p.id, name: p.name, team: p.team, hero: p.hero, host: !!p.host, connected: p.connected,
       route: p.link ? p.link.route || null : null, ping: p.link ? p.link.ping ?? null : null }))
   });
@@ -395,7 +395,7 @@
         settled = true; clearTimeout(timer);
         net.role = 'host';
         net.myId = net.myToken();
-        net.lobby = { room, races: ['human', 'algox'], started: false,
+        net.lobby = { room, races: ['human', 'algox'], map: G.savedMapId(), started: false,
           players: [{ id: net.myId, name, team: 0, hero: G.HEROES[0].id, host: true, connected: true, link: null }] };
         startBeat();
         resolve();
@@ -572,12 +572,20 @@
     lobbyChanged();
   };
 
+  // The battlefield (host only).
+  net.setMap = function (mapId) {
+    if (net.role !== 'host' || net.lobby.started || !G.MAPS.some(m => m.id === mapId)) return;
+    net.lobby.map = mapId;
+    G.saveMapId(mapId);
+    lobbyChanged();
+  };
+
   // Host: begin the battle. Returns the match config for G.startGame.
   net.startMatch = function () {
     const L = net.lobby;
     L.started = true;
     lobbyChanged();
-    return { mode: 'nethost', room: L.room, races: L.races.slice(), me: net.myId,
+    return { mode: 'nethost', room: L.room, races: L.races.slice(), map: L.map, me: net.myId,
       roster: players().map(p => ({ id: p.id, name: p.name, team: p.team, hero: p.hero })) };
   };
 
@@ -958,7 +966,7 @@
     const L = net.lobby, p = link.player;
     const heroIds = {};
     for (const [id, h] of heroes) heroIds[id] = idOf(h);
-    link.send({ t: 'game', config: { mode: 'netclient', room: L.room, races: L.races, me: p.id, heroIds,
+    link.send({ t: 'game', config: { mode: 'netclient', room: L.room, races: L.races, map: L.map, me: p.id, heroIds,
       roster: players().map(q => ({ id: q.id, name: q.name, team: q.team, hero: q.hero })) } });
     link.ready = true;
     link.needFull = true;

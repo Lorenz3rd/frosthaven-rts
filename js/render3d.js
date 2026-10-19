@@ -13,6 +13,8 @@
   const snow = [];
   let viewW = 800, viewH = 600;      // full canvas size (CSS pixels)
   let lastT = performance.now(), time = 0;
+  let day = false;                   // daylight map (see init): the sun stands where the moon would
+  let seaTex = null, surfTex = null;  // Coast: the sea's ripples and the surf, drifting (see R.render)
 
   const TEAM_HEX = { [G.TEAM.PLAYER]: 0x2f5f96, [G.TEAM.ENEMY]: 0x8c1f18 };
   const NEUTRAL_HEX = 0x4a4741;
@@ -69,11 +71,15 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    // Maps are night battles, except a map whose layout asks for daylight (the Coast).
+    day = !!G.map.layout.daylight;
+    document.body.classList.toggle('daylight', day);
+    renderer.toneMappingExposure = day ? 1 : 1.15;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x07090c);
-    scene.fog = new THREE.Fog(0x07090c, 2000, 5000);
+    const sky = day ? 0xaabdcb : 0x07090c;
+    scene.background = new THREE.Color(sky);
+    scene.fog = new THREE.Fog(sky, 2000, 5000);
     // Batches fill once per frame (split screen renders once per view), after the renderer's matrix update.
     scene.onBeforeRender = () => { if (batchedFrame !== frameNo) { batchedFrame = frameNo; batchModels(); } };
 
@@ -82,9 +88,10 @@
     overlay = document.getElementById('overlay');
     octx = overlay.getContext('2d');
 
-    // Cold moonlight + dim sky bounce. Warm light comes only from fires.
-    scene.add(new THREE.HemisphereLight(0x55657e, 0x1a1410, 0.55));
-    moon = new THREE.DirectionalLight(0x9db0d6, 0.75);
+    // Cold moonlight + dim sky bounce. Warm light comes only from fires. By day: a low winter sun and a
+    // bright overcast sky.
+    scene.add(day ? new THREE.HemisphereLight(0xd6e4f0, 0x6a6258, 0.85) : new THREE.HemisphereLight(0x55657e, 0x1a1410, 0.55));
+    moon = day ? new THREE.DirectionalLight(0xfff0dc, 1.45) : new THREE.DirectionalLight(0x9db0d6, 0.75);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     Object.assign(moon.shadow.camera, { left: -2000, right: 2000, top: 2000, bottom: -2000, near: 10, far: 6000 });
@@ -93,11 +100,15 @@
 
     const rand = G.rng(4242);
     const noise = makeNoise(rand);
+    seaTex = surfTex = null;
     buildGround(rand, noise);
-    buildRiver(rand);
+    if (G.map.layout.river) { buildRiver(rand); buildBridges(); }
     buildIce();
-    buildRocks();
+    if (G.map.layout.village) buildVillage(rand); else buildRocks();
     buildTrees(rand);
+    if (G.map.layout.shape) buildSummit(rand);
+    if (G.map.layout.coast) buildCoast(rand, noise);
+    if (G.map.layout.harbor) buildDocks(rand);
     buildBases(rand);
 
     heroLight = new THREE.PointLight(0x7fcfff, 1.6, 420, 2);
@@ -169,30 +180,94 @@
   };
 
   // ---------- world building ----------
+  // Frosthaven is a timber village: snowy streets, cabins, woodpiles, market carts and pines (its rocks and
+  // trees are the blocking circles, see map.js), with wooden bridges over the frozen river. The Mountain is a
+  // snowy summit: cliffs fall away from its edge into the dark, crevasses split it, ridges stand beyond.
+  const SNAP = 46;          // ground vertices this close outside a cliff or crevasse edge are pulled onto it
+  const DROP = 1100;        // how far the ground falls past the summit's cliffs
+  const CHASM_DEPTH = 650;
+  const SEA = 330;          // Coast: how far below the cliff tops the sea lies
+  const SEABED = 3000;      // and the ground under it: deep, so the ground's slope down stays behind the cliff faces
+  const DOCK_WATER = 70;    // Docks: how far below the quays the harbor water lies
+
+  // A point's place in crevasse c: q < 1 inside (the ellipse's (x/a)^2 + (y/b)^2), and the point on its rim
+  // straight out from the middle.
+  function inChasm(c, x, y) {
+    const dx = x - c.x, dy = y - c.y, lx = dx * c.ux + dy * c.uy, ly = -dx * c.uy + dy * c.ux;
+    const q = (lx / c.a) ** 2 + (ly / c.b) ** 2, k = 1 / Math.sqrt(q || 1e-9);
+    return { q, lx, ly, rimX: c.x + (lx * c.ux - ly * c.uy) * k, rimY: c.y + (lx * c.uy + ly * c.ux) * k, depth: (1 - Math.sqrt(q)) * c.b };
+  }
+
   function buildGround(rand, noise) {
-    const m = G.map, PAD = 2600;
+    const m = G.map, L = m.layout, sh = L.shape, PAD = 2600;
     const W = m.w + PAD * 2, H = m.h + PAD * 2;
     const geo = new THREE.PlaneGeometry(W, H, Math.round(W / 45), Math.round(H / 45)).rotateX(-Math.PI / 2);
     geo.translate(m.w / 2, 0, m.h / 2);
     const pos = geo.attributes.position, cols = new Float32Array(pos.count * 3);
     const snowC = [0.66, 0.7, 0.76], mudC = [0.2, 0.16, 0.13], frozenC = [0.24, 0.29, 0.34];
+    const roadC = [0.5, 0.42, 0.32], stoneC = [0.3, 0.31, 0.34], cliffC = [0.12, 0.12, 0.14], iceC = [0.16, 0.24, 0.3];
+    const heathC = [0.2, 0.22, 0.17], co = L.coast || L.harbor;
     const mid = m.w / 2;
+    const mix = (a, b, t) => [0, 1, 2].map(k => G.lerp(a[k], b[k], t));
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getZ(i);
+      let x = pos.getX(i), y = pos.getZ(i), h = 0;
       let mud = smooth(0.52, 0.78, noise(x / 700, y / 700)) * 0.75;
       for (const b of G.bases) {
         const d = G.dist(x, y, b.x, b.y);
         if (d < b.r + 160) mud = Math.max(mud, 0.82 * (1 - smooth(b.r - 120, b.r + 140, d)) * (0.75 + 0.25 * noise(x / 90, y / 90)));
       }
-      const bank = 1 - smooth(55, 260, Math.abs(x - mid));
       const fine = 0.82 + 0.3 * noise(x / 60 + 50, y / 60);
-      let c = [0, 1, 2].map(k => G.lerp(G.lerp(snowC[k], mudC[k], mud), frozenC[k], bank * 0.7) * fine);
+      let c;
+      if (co) {
+        // Coast (and the Docks' quays): snow over dark heath, worn to bare rock along the cliff tops. Ground just past a cliff top
+        // is pulled onto it; beyond, it drops to the seabed (the cliff faces are meshes of their own).
+        const k = co.land(x, y), e = k.d;
+        const heath = smooth(0.42, 0.7, noise(x / 380 + 4, y / 380)) * 0.6;
+        c = mix(mix(mix(snowC, heathC, heath), stoneC, (1 - smooth(10, 150, e)) * 0.8), mudC, mud);
+        if (e < 0) {
+          if (e > -SNAP) { x = k.rx; y = k.ry; c = stoneC; } else { h = -SEABED; c = cliffC; }
+        }
+        pos.setX(i, x); pos.setZ(i, y); pos.setY(i, h);
+      } else if (!sh) {
+        // Village streets: packed, muddy snow, worn into ruts.
+        let rd = Infinity;
+        for (const [ax, ay, bx, by] of L.roads || []) rd = Math.min(rd, G.segDist(x, y, ax, ay, bx, by));
+        const road = (1 - smooth(55, 95, rd)) * (0.8 + 0.2 * noise(x / 40, y / 40 + 20));
+        const ruts = smooth(20, 34, rd) * (1 - smooth(34, 50, rd));   // wheel ruts down each side
+        const bank = L.river ? 1 - smooth(55, 260, Math.abs(x - mid)) : 0;
+        c = mix(mix(mix(snowC, mudC, mud * (1 - road)), roadC, road), mudC, ruts * 0.45);
+        c = mix(c, frozenC, bank * 0.7);
+      } else {
+        // Summit: snow, with rock the wind scoured bare; a band of bare rock along the cliff edge.
+        const e = sh.edge(x, y);
+        const scoured = smooth(0.55, 0.75, noise(x / 500 + 9, y / 500)) * 0.7 + (1 - smooth(10, 90, e)) * 0.6;
+        c = mix(mix(snowC, stoneC, Math.min(1, scoured)), mudC, mud);
+        if (e < 0) {
+          if (e > -SNAP) { const p = sh.nearest(x, y, 0); x = p.x; y = p.y; c = mix(stoneC, cliffC, 0.5); }
+          else {
+            // Over the drop: the cliff falls away, then far out a ring of snowy ridges rises from the dark.
+            // They stay low to the south, where they would stand between the camera and the summit.
+            const d = -e, south = 1 - 0.75 * smooth(m.h / 2, m.h + 600, y);
+            const ridge = smooth(900, 2300, d) * (400 + 1600 * noise(x / 800 + 3, y / 800) ** 2) * south;
+            h = -DROP * (0.45 + 0.55 * smooth(SNAP, SNAP + 500, d)) + ridge;
+            c = mix(cliffC, snowC, smooth(-500, 200, h) * 0.8);
+          }
+        }
+        for (const ch of m.chasms) {
+          const k = inChasm(ch, x, y);
+          if (k.q >= 1) continue;
+          if (k.depth < SNAP * 0.6) { x = k.rimX; y = k.rimY; c = mix(stoneC, iceC, 0.6); }
+          else { h = -CHASM_DEPTH; c = iceC.map(v => v * (1 - 0.8 * smooth(0, 70, k.depth))); }
+        }
+        pos.setX(i, x); pos.setZ(i, y); pos.setY(i, h);
+      }
       // Outside the playable map, fade into black wasteland.
       const out = Math.max(0, -x, x - m.w, -y, y - m.h);
       const dark = 1 - 0.9 * smooth(0, 700, out);
-      cols.set(c.map(v => v * dark), i * 3);
+      cols.set(c.map(v => v * fine * dark), i * 3);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    if (sh || co) geo.computeVertexNormals();
 
     const tex = canvasTex(512, (g, s) => {
       g.fillStyle = '#b9bec4'; g.fillRect(0, 0, s, s);
@@ -244,6 +319,23 @@
     scene.add(river);
   }
 
+  // Wooden footbridges where the lanes cross the river. The deck sits barely above the ice so troops
+  // walking over it (on the ground plane) don't sink into it.
+  function buildBridges() {
+    const m = G.map, plank = mat(0x5a4330), dark = mat(0x2e2219), g = new THREE.Group();
+    const add = (geo, material, x, y, z) => { const o = shadowed(new THREE.Mesh(geo, material)); o.position.set(x, y, z); g.add(o); return o; };
+    for (const [ax, ay, bx, by] of m.layout.roads) {
+      if (ay !== by || ax > m.w / 2 || bx < m.w / 2) continue;
+      const x = m.w / 2, y = ay, LEN = 250, WID = 170;
+      for (let k = 0; k < 14; k++) add(new THREE.BoxGeometry(LEN / 14 - 2, 2.4, WID), k % 2 ? plank : dark, x - LEN / 2 + (k + 0.5) * LEN / 14, 2.6, y);
+      for (const s of [-1, 1]) {
+        add(new THREE.BoxGeometry(LEN + 10, 5, 6), dark, x, 34, y + s * (WID / 2 + 4));
+        for (let k = 0; k <= 4; k++) add(new THREE.CylinderGeometry(4, 5, 40, 6), dark, x - LEN / 2 + k * LEN / 4, 20, y + s * (WID / 2 + 4));
+      }
+    }
+    scene.add(G.kit.mergeStatic(g, new Set()));
+  }
+
   function buildIce() {
     const iceMat = new THREE.MeshStandardMaterial({ color: 0x7d93a8, roughness: 0.1, metalness: 0.35, transparent: true, opacity: 0.4 });
     G.map.ice.forEach((p, i) => {
@@ -256,65 +348,747 @@
     });
   }
 
-  function buildRocks() {
+  // A jagged boulder of radius r: snow on its top faces, dark stone on its sides. seed varies the shape.
+  function boulderGeo(r, seed, flat = 0.75) {
     const hash = (x, y, z) => { const s = Math.sin(x * 12.99 + y * 78.23 + z * 37.72) * 43758.55; return s - Math.floor(s); };
+    const geo = new THREE.IcosahedronGeometry(r, 1);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const j = 0.78 + 0.4 * hash(Math.round(x * 50 / r) + seed, Math.round(y * 50 / r), Math.round(z * 50 / r) - seed);
+      pos.setXYZ(i, x * j, y * j * flat, z * j);
+    }
+    geo.computeVertexNormals();
+    const nor = geo.attributes.normal, cols = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i += 3) {   // per face: snow on top, dark stone on the sides
+      const ny = (nor.getY(i) + nor.getY(i + 1) + nor.getY(i + 2)) / 3;
+      const v = 0.85 + 0.3 * hash(i, seed, r);
+      const c = ny > 0.62 ? [0.62 * v, 0.66 * v, 0.72 * v] : [0.13 * v, 0.13 * v, 0.14 * v];
+      for (let q = 0; q < 3; q++) cols.set(c, (i + q) * 3);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    return geo;
+  }
+
+  function buildRocks() {
     const rockMat = mat(0xffffff, { vertexColors: true });
     const rocks = new THREE.Group();
     for (const k of G.map.rocks) {
-      const geo = new THREE.IcosahedronGeometry(k.r, 1);
-      const pos = geo.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-        const j = 0.78 + 0.4 * hash(Math.round(x + k.x), Math.round(y), Math.round(z + k.y));
-        pos.setXYZ(i, x * j, y * j * 0.75, z * j);
-      }
-      geo.computeVertexNormals();
-      const nor = geo.attributes.normal, cols = new Float32Array(pos.count * 3);
-      for (let i = 0; i < pos.count; i += 3) {   // per face: snow on top, dark stone on the sides
-        const ny = (nor.getY(i) + nor.getY(i + 1) + nor.getY(i + 2)) / 3;
-        const v = 0.85 + 0.3 * hash(i, k.x, k.y);
-        const c = ny > 0.62 ? [0.62 * v, 0.66 * v, 0.72 * v] : [0.13 * v, 0.13 * v, 0.14 * v];
-        for (let q = 0; q < 3; q++) cols.set(c, (i + q) * 3);
-      }
-      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-      const mesh = shadowed(new THREE.Mesh(geo, rockMat));
+      if (k.mast) continue;
+      const mesh = shadowed(new THREE.Mesh(boulderGeo(k.r, k.x + k.y * 7), rockMat));
       mesh.position.set(k.x, k.r * 0.12, k.y);
-      mesh.rotation.y = hash(k.x, k.y, 1) * 6.28;
+      mesh.rotation.y = (k.x * 0.37 + k.y * 0.61) % 6.28;
       rocks.add(mesh);
     }
     scene.add(G.kit.mergeStatic(rocks, new Set()));  // one draw call for every rock
   }
 
-  function treeGeometry(rand) {
-    const h = 1, parts = [];
-    parts.push(new THREE.CylinderGeometry(0.02, 0.06, h, 6).translate(0, h / 2, 0));
-    const branches = 4 + Math.floor(rand() * 4);
-    for (let i = 0; i < branches; i++) {
-      const len = 0.25 + rand() * 0.3;
-      const g = new THREE.CylinderGeometry(0.006, 0.022, len, 5).translate(0, len / 2, 0);
-      g.rotateZ(0.5 + rand() * 0.7).rotateY(rand() * Math.PI * 2).translate(0, h * (0.35 + rand() * 0.55), 0);
-      parts.push(g);
-      if (rand() < 0.6) {   // a twig off the branch tip
-        const t = new THREE.CylinderGeometry(0.004, 0.01, len * 0.5, 4).translate(0, len * 0.25, 0);
-        t.rotateZ(-0.6 + rand() * 1.2).rotateY(rand() * 6.28).translate(0, h * (0.5 + rand() * 0.45), 0);
-        parts.push(t);
+  // ---- The village: every rock of the Frosthaven layout becomes a building or a pile of goods that fills
+  // the same blocking circle. Big ones are log cabins; on a street, a market cart; smaller ones woodpiles,
+  // barrels and crates.
+  function buildVillage(rand) {
+    const M = {
+      log: mat(0x5b3e27), logDark: mat(0x3a2718), roof: mat(0x41301f), snow: mat(0xd9e1ea), stone: mat(0x4d4e52),
+      door: mat(0x24180f), plank: mat(0x6b4e33), cut: mat(0xb08a5e), iron: mat(0x2a2a2c), sack: mat(0x8a7656)
+    };
+    const lit = G.kit.lit(0xffb35a);
+    const g = new THREE.Group(), windows = [];
+    const roads = G.map.layout.roads || [];
+    // A part of a prop: geo placed at (x, y, z) in the prop's frame (turned by `rot` about (cx, cy)).
+    function part(geo, material, cx, cy, rot, x, y, z, o = {}) {
+      const mesh = new THREE.Mesh(geo, material);
+      const c = Math.cos(rot), s = Math.sin(rot);
+      mesh.position.set(cx + x * c - z * s, y, cy + x * s + z * c);
+      mesh.rotation.set(o.rx || 0, -rot + (o.ry || 0), o.rz || 0);
+      if (o.scale) mesh.scale.set(...o.scale);
+      if (o.shadow !== false) shadowed(mesh);
+      g.add(mesh);
+      return mesh;
+    }
+    // A triangular prism of half-width hw and height ht, ridge along x: a gable roof.
+    const prism = (hw, ht, len) => new THREE.CylinderGeometry(hw / 0.866, hw / 0.866, len, 3).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2)
+      .scale(1, ht / (1.5 * hw / 0.866), 1).translate(0, ht * (0.5 / 1.5), 0);
+
+    function cabin(k, rot) {
+      const r = k.r, L = r * 1.5, W = r * 1.08, wh = r * 0.62 + 26, top = wh + 6;
+      const P = (geo, material, x, y, z, o) => part(geo, material, k.x, k.y, rot, x, y, z, o);
+      P(new THREE.BoxGeometry(L + 8, 8, W + 8), M.stone, 0, 4, 0);
+      P(new THREE.BoxGeometry(L, wh, W), M.log, 0, 6 + wh / 2, 0);
+      for (let yy = 16; yy < wh; yy += 13) P(new THREE.BoxGeometry(L + 3, 2.5, W + 3), M.logDark, 0, 6 + yy, 0, { shadow: false });
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) P(new THREE.BoxGeometry(7, wh, 7), M.logDark, sx * (L / 2 + 1), 6 + wh / 2, sz * (W / 2 + 1));
+      const rh = W * 0.62;
+      P(prism(W / 2 + 12, rh, L + 18), M.roof, 0, top, 0);
+      P(prism(W / 2 + 11, rh, L + 14), M.snow, 0, top + 6, 0);
+      P(new THREE.BoxGeometry(16, rh + 34, 16), M.stone, L * 0.3, top + (rh + 34) / 2 - 10, -W * 0.18);
+      P(new THREE.BoxGeometry(18, 4, 18), M.snow, L * 0.3, top + rh + 26, -W * 0.18, { shadow: false });
+      P(new THREE.BoxGeometry(20, 38, 3), M.door, -L * 0.15, 6 + 19, W / 2 + 1.5, { shadow: false });
+      for (const [wx, wz] of [[L * 0.22, W / 2 + 1.5], [-L * 0.38, W / 2 + 1.5], [0, -W / 2 - 1.5]]) {
+        P(new THREE.BoxGeometry(14, 13, 3), lit, wx, 6 + wh * 0.58, wz, { shadow: false });
+        const c = Math.cos(rot), s = Math.sin(rot), out = Math.sign(wz) * 10;
+        windows.push(k.x + wx * c - (wz + out) * s, 6 + wh * 0.58, k.y + wx * s + (wz + out) * c);
       }
     }
-    return merge(parts);
+    function woodpile(k, rot) {
+      const r = k.r, len = r * 1.55, lr = r * 0.2;
+      const P = (geo, material, x, y, z, o) => part(geo, material, k.x, k.y, rot, x, y, z, o);
+      const rows = [[-2, -1, 0, 1, 2].map(i => i * lr * 1.9), [-1.5, -0.5, 0.5, 1.5].map(i => i * lr * 1.9), [-1, 0, 1].map(i => i * lr * 1.9)];
+      rows.forEach((row, j) => row.forEach(z => P(new THREE.CylinderGeometry(lr, lr, len, 7).rotateZ(Math.PI / 2), M.log, 0, lr + j * lr * 1.65, z * 0.95)));
+      for (const sx of [-1, 1]) P(new THREE.BoxGeometry(2, lr * 4.6, lr * 9), M.cut, sx * (len / 2 + 0.5), lr * 2.3, 0, { shadow: false });
+      P(new THREE.BoxGeometry(len * 0.9, 4, lr * 4), M.snow, 0, lr + 2 * lr * 1.65 + lr, 0, { shadow: false });
+      // A chopping block with an axe-cut log beside it.
+      P(new THREE.CylinderGeometry(lr * 1.3, lr * 1.4, lr * 2, 8), M.cut, len * 0.15, lr, r * 0.75);
+    }
+    function goods(k, rot) {
+      const r = k.r;
+      const P = (geo, material, x, y, z, o) => part(geo, material, k.x, k.y, rot, x, y, z, o);
+      const br = r * 0.32, bh = r * 0.85;
+      P(new THREE.CylinderGeometry(br * 0.88, br * 0.88, bh, 10), M.plank, -r * 0.35, bh / 2, -r * 0.3);
+      P(new THREE.CylinderGeometry(br * 0.92, br * 0.92, 3, 10), M.iron, -r * 0.35, bh * 0.75, -r * 0.3, { shadow: false });
+      P(new THREE.CylinderGeometry(br * 0.88, br * 0.88, bh, 10), M.plank, r * 0.3, bh / 2, -r * 0.38);
+      P(new THREE.CylinderGeometry(br * 0.85, br * 0.85, 3, 10), M.snow, r * 0.3, bh + 1, -r * 0.38, { shadow: false });
+      const cs = r * 0.62;
+      P(new THREE.BoxGeometry(cs, cs, cs), M.log, r * 0.05, cs / 2, r * 0.35, { ry: 0.3 });
+      P(new THREE.BoxGeometry(cs * 0.7, cs * 0.7, cs * 0.7), M.plank, r * 0.1, cs + cs * 0.35, r * 0.3, { ry: -0.2 });
+    }
+    function cart(k, rot) {
+      const r = k.r, L = r * 1.5, W = r * 0.9;
+      const P = (geo, material, x, y, z, o) => part(geo, material, k.x, k.y, rot, x, y, z, o);
+      const wr = r * 0.34;
+      P(new THREE.BoxGeometry(L, 7, W), M.plank, 0, wr + 6, 0);
+      for (const sz of [-1, 1]) P(new THREE.BoxGeometry(L, 14, 3), M.logDark, 0, wr + 16, sz * W / 2);
+      for (const sz of [-1, 1]) P(new THREE.CylinderGeometry(wr, wr, 5, 12).rotateX(Math.PI / 2), M.logDark, -L * 0.15, wr, sz * (W / 2 + 4));
+      P(new THREE.BoxGeometry(L * 0.55, 4, 5), M.logDark, L * 0.75, wr + 2, 0);   // the shaft
+      P(new THREE.SphereGeometry(r * 0.24, 8, 6).scale(1.2, 0.7, 1), M.sack, -L * 0.2, wr + 20, -W * 0.15);
+      P(new THREE.SphereGeometry(r * 0.22, 8, 6).scale(1.2, 0.7, 1), M.sack, L * 0.12, wr + 20, W * 0.12);
+      P(new THREE.BoxGeometry(r * 0.4, r * 0.35, r * 0.4), M.log, L * 0.3, wr + 10 + r * 0.17, -W * 0.15);
+    }
+
+    for (const k of G.map.rocks) {
+      if (k.mast) continue;   // the Docks' ship's masts: drawn with the ship
+      const rot = rand() * Math.PI * 2;
+      const street = roads.some(([ax, ay, bx, by]) => G.segDist(k.x, k.y, ax, ay, bx, by) < 100 + k.r * 0.5);
+      if (street) {
+        // Along the street, the long way.
+        const [ax, ay, bx, by] = roads.reduce((a, s) => (G.segDist(k.x, k.y, ...s) < G.segDist(k.x, k.y, ...a) ? s : a));
+        cart(k, Math.atan2(by - ay, bx - ax) + (rand() < 0.5 ? 0 : Math.PI));
+      } else if (k.r >= 46) cabin(k, rot);
+      else if (k.r >= 34) woodpile(k, rot);
+      else goods(k, rot);
+    }
+    scene.add(G.kit.mergeStatic(g, new Set()));
+
+    // Warm light spilling from the windows: one glow per window, all in one draw.
+    const wg = new THREE.BufferGeometry();
+    wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(windows), 3));
+    const glow = new THREE.Points(wg, new THREE.PointsMaterial({
+      size: 90, map: G.kit.glowTex(), color: 0xff9a40, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    scene.add(glow);
+  }
+
+  // A snowy pine of unit height, as one vertex-colored geometry: a trunk and stacked tiers of boughs, each
+  // with snow lying on its top.
+  function pineGeometry(rand) {
+    const parts = [];
+    const colored = (geo, c) => {
+      const g = geo.index ? geo.toNonIndexed() : geo, n = g.attributes.position.count, a = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) a.set(c, i * 3);
+      g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+      return g;
+    };
+    parts.push(colored(new THREE.CylinderGeometry(0.025, 0.045, 0.35, 6).translate(0, 0.175, 0), [0.17, 0.12, 0.08]));
+    const tiers = 3 + Math.floor(rand() * 2), green = [0.07 + rand() * 0.03, 0.15 + rand() * 0.05, 0.1];
+    for (let i = 0; i < tiers; i++) {
+      const f = i / tiers, rad = (0.3 - f * 0.17) * (0.9 + rand() * 0.2), y = 0.2 + f * 0.62, ht = 0.34 - f * 0.08;
+      const turn = rand() * Math.PI;
+      parts.push(colored(new THREE.ConeGeometry(rad, ht, 8).rotateY(turn).translate(0, y + ht / 2, 0), green));
+      parts.push(colored(new THREE.ConeGeometry(rad * 0.82, ht * 0.62, 8).rotateY(turn).translate(0, y + ht * 0.62 + 0.02, 0), [0.7, 0.74, 0.8]));
+    }
+    const geo = new THREE.BufferGeometry();
+    for (const name of ['position', 'normal', 'color']) {
+      const arr = new Float32Array(parts.reduce((s, p) => s + p.attributes[name].array.length, 0));
+      let o = 0;
+      for (const p of parts) { arr.set(p.attributes[name].array, o); o += p.attributes[name].array.length; }
+      geo.setAttribute(name, new THREE.BufferAttribute(arr, 3));
+    }
+    return geo;
   }
 
   function buildTrees(rand) {
-    const variants = [0, 1, 2, 3].map(() => treeGeometry(rand));
-    const bark = mat(0x1c1712);
+    const variants = [0, 1, 2, 3].map(() => pineGeometry(rand));
+    const needles = mat(0xffffff, { vertexColors: true });
     const trees = new THREE.Group();
     for (const t of G.map.trees) {
-      const m = shadowed(new THREE.Mesh(variants[t.variant], bark));
-      m.scale.set(t.h * 0.9, t.h, t.h * 0.9);
+      const m = shadowed(new THREE.Mesh(variants[t.variant], needles));
+      m.scale.set(t.h * 0.85, t.h, t.h * 0.85);
       m.rotation.y = t.rot;
       m.position.set(t.x, 0, t.y);
       trees.add(m);
     }
     scene.add(G.kit.mergeStatic(trees, new Set()));  // one draw call for every tree
+  }
+
+  // ---- The summit: broken rock along the cliff tops, and ice teeth round the crevasse lips.
+  function buildSummit(rand) {
+    const m = G.map, sh = m.layout.shape, { CX, CY, LU, LV } = sh.diamond;
+    const rimMat = mat(0xffffff, { vertexColors: true });
+    const g = new THREE.Group();
+    const geos = [0, 1, 2, 3, 4, 5].map(i => boulderGeo(1, i * 31.7, 0.6));
+    // A rock of radius r on the cliff top at (x, y), pushed out along (nx, ny) so it hangs over the drop.
+    const rimRock = (x, y, nx, ny) => {
+      const r = 34 + rand() * 46;
+      x += nx * r * 0.55; y += ny * r * 0.55;
+      const mesh = shadowed(new THREE.Mesh(geos[Math.floor(rand() * geos.length)], rimMat));
+      mesh.scale.set(r, r * (0.6 + rand() * 0.7), r);
+      mesh.rotation.y = rand() * 6.28;
+      mesh.position.set(x, -r * 0.25, y);
+      g.add(mesh);
+    };
+    // Along the diamond's edges (where no base ledge bulges past them), then round the ledges themselves.
+    const corners = [[CX - LU, CY], [CX, CY - LV], [CX + LU, CY], [CX, CY + LV]];
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = corners[i], [bx, by] = corners[(i + 1) % 4], len = G.dist(ax, ay, bx, by);
+      const nx = (by - ay) / len, ny = -(bx - ax) / len;   // outward
+      for (let d = 0; d < len; d += 70 + rand() * 60) {
+        const x = ax + (bx - ax) * d / len, y = ay + (by - ay) * d / len;
+        if (sh.edge(x + nx * 30, y + ny * 30) > 0) continue;   // under a ledge: not the edge here
+        rimRock(x, y, nx, ny);
+      }
+    }
+    for (const b of m.layout.bases) {
+      for (let a = 0; a < Math.PI * 2; a += (80 + rand() * 50) / sh.ledge) {
+        const x = b.x + Math.cos(a) * sh.ledge, y = b.y + Math.sin(a) * sh.ledge;
+        if (sh.edge(x + Math.cos(a) * 30, y + Math.sin(a) * 30) > -8) continue;   // the summit goes on past here
+        rimRock(x, y, Math.cos(a), Math.sin(a));
+      }
+    }
+    // Crevasse lips: blue-white ice teeth leaning over the dark.
+    const ice = mat(0xa9d4ee, { roughness: 0.25, metalness: 0.1 });
+    for (const c of m.chasms) {
+      for (let t = 0; t < Math.PI * 2; t += 0.12 + rand() * 0.1) {
+        const lx = Math.cos(t) * c.a, ly = Math.sin(t) * c.b;
+        const x = c.x + lx * c.ux - ly * c.uy, y = c.y + lx * c.uy + ly * c.ux;
+        const h = 18 + rand() * 34;
+        const tooth = shadowed(new THREE.Mesh(new THREE.ConeGeometry(7 + rand() * 7, h, 5), ice));
+        const out = Math.atan2(y - c.y, x - c.x);
+        tooth.position.set(x, h * 0.35, y);
+        tooth.rotation.set(Math.sin(out) * 0.5, rand() * 6, -Math.cos(out) * 0.5);
+        g.add(tooth);
+      }
+    }
+    scene.add(G.kit.mergeStatic(g, new Set()));
+  }
+
+  // ---- The coast: sheer cliff faces down to the sea (along the shore, the channel and the inlet), surf at
+  // their feet, broken rock on their tops, sea stacks offshore, and a timber trestle bridge at each crossing.
+  function buildCoast(rand, noise) {
+    const m = G.map, co = m.layout.coast, { W, H, CX, CY, B, BA, L, BW } = co;
+    seaTex = canvasTex(256, (g, s) => {
+      g.fillStyle = '#365e70'; g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 260; i++) {
+        const x = rand() * s, y = rand() * s, w = 8 + rand() * 30, light = rand() < 0.5;
+        g.strokeStyle = light ? `rgba(185,215,228,${0.12 + rand() * 0.25})` : `rgba(8,18,26,${0.15 + rand() * 0.25})`;
+        g.lineWidth = 1 + rand() * 2;
+        for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) {
+          g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + w / 2, y + oy - 3, x + ox + w, y + oy); g.stroke();
+        }
+      }
+    }, true);
+    const PAD = 2600;
+    seaTex.repeat.set((W + PAD * 2) / 520, (H + PAD * 2) / 520);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(W + PAD * 2, H + PAD * 2).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ map: seaTex, color: 0xbcd2de, roughness: 0.3, metalness: 0.35 }));
+    sea.position.set(W / 2, -SEA, H / 2);
+    sea.receiveShadow = true;
+    scene.add(sea);
+
+    // The cliff lines, each a run of points along a cliff top with the way out over the water at each.
+    const run = (fn, a, b) => { const n = Math.max(1, Math.ceil(Math.abs(b - a) / 40)), out = []; for (let i = 0; i <= n; i++) out.push(fn(a + (b - a) * i / n)); return out; };
+    const top = x => [x, -co.offTop(x)], bottom = x => [x, H + co.offBottom(x)], left = y => [-co.offLeft(y), y], right = y => [W + co.offRight(y), y];
+    const corner = (fx, fy) => { let x = 0, y = 0; for (let i = 0; i < 10; i++) { x = fx(y)[0]; y = fy(x)[1]; } return [x, y]; };
+    const TL = corner(left, top), BL = corner(left, bottom), TR = corner(right, top), BR = corner(right, bottom);
+    const bank = x => y => [x, y];
+    const inlet = s => [
+      ...run(x => [x, CY - BA], CX + s * B, CX + s * L),
+      ...run(t => [CX + s * (L + BA * Math.sin(t)), CY - BA * Math.cos(t)], 0, Math.PI),
+      ...run(x => [x, CY + BA], CX + s * L, CX + s * B)
+    ];
+    const lines = [
+      [...run(top, CX - B, TL[0]), ...run(left, TL[1], BL[1]), ...run(bottom, BL[0], CX - B)],
+      [...run(bottom, CX + B, BR[0]), ...run(right, BR[1], TR[1]), ...run(top, TR[0], CX + B)],
+      run(bank(CX - B), -co.offTop(CX - B), CY - BA), run(bank(CX - B), CY + BA, H + co.offBottom(CX - B)),
+      run(bank(CX + B), -co.offTop(CX + B), CY - BA), run(bank(CX + B), CY + BA, H + co.offBottom(CX + B)),
+      inlet(-1), inlet(1)
+    ].map(pts => {
+      pts = pts.filter((p, i) => !i || G.dist(p[0], p[1], pts[i - 1][0], pts[i - 1][1]) > 1);
+      let s = 0;
+      return pts.map((p, i) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], tl = G.dist(a[0], a[1], b[0], b[1]) || 1;
+        let nx = -(b[1] - a[1]) / tl, ny = (b[0] - a[0]) / tl;
+        if (co.land(p[0] + nx * 20, p[1] + ny * 20).d > co.land(p[0] - nx * 20, p[1] - ny * 20).d) { nx = -nx; ny = -ny; }
+        if (i) s += G.dist(p[0], p[1], pts[i - 1][0], pts[i - 1][1]);
+        return { x: p[0], y: p[1], nx, ny, s };
+      });
+    });
+    const nearBridge = (x, y, pad) => Math.abs(x - CX) < B + 40 && co.BRIDGES.some(by => Math.abs(y - by) < BW / 2 + pad);
+
+    // Cliff faces: a strip down from each cliff top, jutting out over the water in ragged buttresses.
+    const RISE = SEA + 70, K = 7;
+    const cliffTex = canvasTex(256, (g, s) => {
+      const grd = g.createLinearGradient(0, 0, 0, s);
+      grd.addColorStop(0, '#9a958d'); grd.addColorStop(0.5, '#6e6a64'); grd.addColorStop(0.86, '#45464a'); grd.addColorStop(1, '#2a2f33');
+      g.fillStyle = grd; g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 70; i++) {   // strata
+        const y = rand() * s * 0.85;
+        g.strokeStyle = rand() < 0.5 ? `rgba(15,14,13,${0.25 + rand() * 0.35})` : `rgba(150,145,135,${0.12 + rand() * 0.15})`;
+        g.lineWidth = 1 + rand() * 3;
+        g.beginPath(); g.moveTo(0, y);
+        for (let x = 0; x <= s; x += 16) g.lineTo(x, y + Math.sin(x / 40 + i) * 3 + (rand() - 0.5) * 3);
+        g.stroke();
+      }
+      g.strokeStyle = 'rgba(8,8,8,0.45)';   // cracks
+      for (let i = 0; i < 26; i++) {
+        let x = rand() * s, y = rand() * s * 0.6;
+        g.lineWidth = 1 + rand() * 1.5; g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 5; k++) { x += (rand() - 0.5) * 14; y += 10 + rand() * 18; g.lineTo(x, y); }
+        g.stroke();
+      }
+      for (let i = 0; i < 90; i++) {   // snow caught on the ledges, thickest at the top
+        const y = rand() ** 2 * s * 0.6, w = 6 + rand() * 30;
+        g.fillStyle = `rgba(220,228,236,${Math.max(0, 0.35 + rand() * 0.45 - y / s)})`;
+        g.fillRect(rand() * s, y, w, 2 + rand() * 3);
+      }
+      g.fillStyle = 'rgba(225,232,238,0.9)'; g.fillRect(0, 0, s, 5);
+      const wl = s * SEA / RISE;   // the waterline: wet rock under a band of spray
+      g.fillStyle = 'rgba(10,14,16,0.5)'; g.fillRect(0, wl - 26, s, 26);
+      for (let i = 0; i < 160; i++) {
+        g.fillStyle = `rgba(230,238,242,${0.2 + rand() * 0.5})`;
+        g.beginPath(); g.arc(rand() * s, wl - rand() ** 2 * 22, 1 + rand() * 3.5, 0, Math.PI * 2); g.fill();
+      }
+    }, true);
+    const pos = [], uv = [], idx = [];
+    lines.forEach((line, li) => {
+      const o = pos.length / 3;
+      line.forEach((p, i) => {
+        for (let k = 0; k <= K; k++) {
+          const f = k / K, out = (14 + 30 * noise(p.s / 80 + li * 37, f * 3)) * Math.min(1, f * 6);
+          pos.push(p.x + p.nx * out, -f * RISE, p.y + p.ny * out);
+          uv.push(p.s / 300, 1 - f);
+        }
+        if (i) for (let k = 0; k < K; k++) { const a = o + (i - 1) * (K + 1) + k, b = a + K + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+      });
+    });
+    const wallGeo = new THREE.BufferGeometry();
+    wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    wallGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    wallGeo.setIndex(idx);
+    wallGeo.computeVertexNormals();
+    // At night the moon shines from the north-west, so the faces the camera sees (south-facing) are in
+    // shade: a little glow of their own keeps the rock readable.
+    const walls = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({
+      map: cliffTex, emissiveMap: cliffTex, emissive: day ? 0x000000 : 0x4a4f58, roughness: 0.95, side: THREE.DoubleSide
+    }));
+    walls.receiveShadow = true;
+    scene.add(walls);
+
+    // Surf: a band of foam along the foot of every cliff, drifting.
+    surfTex = canvasTex(256, (g, s) => {
+      g.clearRect(0, 0, s, s);
+      for (let i = 0; i < 700; i++) {
+        const y = rand() ** 1.8 * s, a = 0.55 * (1 - y / s);
+        g.fillStyle = `rgba(235,242,246,${a * (0.3 + rand() * 0.7)})`;
+        const x = rand() * s, w = 4 + rand() * 26;
+        for (const ox of [-s, 0, s]) g.fillRect(x + ox, y, w, 1.5 + rand() * 3);
+      }
+    }, true);
+    surfTex.wrapT = THREE.ClampToEdgeWrapping;
+    const fp = [], fu = [], fi = [];
+    for (const line of lines) {
+      const o = fp.length / 3;
+      line.forEach((p, i) => {
+        for (const [d, v] of [[16, 1], [150, 0]]) { fp.push(p.x + p.nx * d, -SEA + 1.5, p.y + p.ny * d); fu.push(p.s / 260, v); }
+        if (i) { const a = o + (i - 1) * 2; fi.push(a, a + 2, a + 1, a + 2, a + 3, a + 1); }
+      });
+    }
+    const surfGeo = new THREE.BufferGeometry();
+    surfGeo.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
+    surfGeo.setAttribute('uv', new THREE.Float32BufferAttribute(fu, 2));
+    surfGeo.setIndex(fi);
+    surfGeo.computeVertexNormals();
+    scene.add(new THREE.Mesh(surfGeo, new THREE.MeshBasicMaterial({ map: surfTex, color: 0xa9bac4, transparent: true, depthWrite: false, side: THREE.DoubleSide })));
+
+    // Broken rock: on the cliff tops (leaning out over the drop, clear of the bridges), in the surf at their
+    // feet, and sea stacks standing offshore.
+    const g = new THREE.Group(), rockMat = mat(0xa9aeb5, { vertexColors: true });
+    const geos = [0, 1, 2, 3, 4, 5].map(i => boulderGeo(1, i * 31.7 + 5, 0.6));
+    const tall = [0, 1, 2, 3].map(i => boulderGeo(1, i * 17.3 + 2, 1));
+    const rock = (geo, x, y, z, sx, sy, sz) => {
+      const mesh = shadowed(new THREE.Mesh(geo, rockMat));
+      mesh.scale.set(sx, sy, sz); mesh.rotation.y = rand() * 6.28; mesh.position.set(x, y, z);
+      g.add(mesh);
+    };
+    for (const line of lines) {
+      let next = 0;
+      for (const p of line) {
+        if (p.s < next) continue;
+        next = p.s + 120 + rand() * 220;
+        if (!nearBridge(p.x, p.y, 70)) {
+          const r = 16 + rand() * 30;
+          rock(geos[Math.floor(rand() * 6)], p.x + p.nx * r * 0.55, -r * 0.25, p.y + p.ny * r * 0.55, r, r * (0.6 + rand() * 0.6), r);
+        }
+        if (rand() < 0.45 && !nearBridge(p.x, p.y, 40)) {
+          const r = 20 + rand() * 45, d = 40 + rand() * 60;
+          rock(geos[Math.floor(rand() * 6)], p.x + p.nx * d, -SEA + r * 0.1, p.y + p.ny * d, r, r * 0.7, r);
+        }
+      }
+    }
+    for (let i = 0; i < 34; i++) {
+      const line = lines[i % 2], p = line[Math.floor(rand() * line.length)];
+      const d = 220 + rand() ** 1.5 * 1500, x = p.x + p.nx * d, y = p.y + p.ny * d;
+      if (Math.abs(x - CX) < B + 300) continue;   // keep the channel's mouths open
+      const r = 50 + rand() * 150, topY = -60 + rand() * 260, botY = -SEA - 120;
+      rock(tall[Math.floor(rand() * 4)], x, (topY + botY) / 2, y, r, (topY - botY) / 2, r * (0.7 + rand() * 0.5));
+    }
+    scene.add(G.kit.mergeStatic(g, new Set()));
+
+    // The bridges: a plank deck with railings on timber trestles standing in the water, stone piers
+    // against the cliffs, and a lantern at each end.
+    const plank = mat(0x5a4330), dark = mat(0x2e2219), wet = mat(0x231a13), stone = mat(0x46474b);
+    const bg = new THREE.Group();
+    const add = (geo, material, x, y, z, rx = 0) => { const o = shadowed(new THREE.Mesh(geo, material)); o.position.set(x, y, z); o.rotation.x = rx; bg.add(o); return o; };
+    const LEN = 2 * B + 160, DW = BW + 20, N = 40, DEEP = SEA + 60;
+    for (const by of co.BRIDGES) {
+      for (let k = 0; k < N; k++) add(new THREE.BoxGeometry(LEN / N - 3, 5, DW - (k % 3) * 6), k % 2 ? plank : dark, CX - LEN / 2 + (k + 0.5) * LEN / N, 2.5, by);
+      for (const z of [-DW / 2 + 12, 0, DW / 2 - 12]) add(new THREE.BoxGeometry(LEN, 16, 18), dark, CX, -9, by + z);
+      for (const s of [-1, 1]) {
+        const z = by + s * (DW / 2 + 6);
+        add(new THREE.BoxGeometry(LEN + 10, 6, 7), dark, CX, 38, z);
+        add(new THREE.BoxGeometry(LEN, 4, 5), dark, CX, 20, z);
+        for (let k = 0; k <= 10; k++) add(new THREE.CylinderGeometry(4, 5, 42, 6), dark, CX - LEN / 2 + k * LEN / 10, 21, z);
+        // A stone pier against each cliff, under the deck's ends.
+        add(new THREE.BoxGeometry(60, 150, DW + 50), stone, CX + s * (B - 26), -75, by);
+      }
+      // Trestle bents: three posts down into the sea, a cap beam, and cross braces.
+      for (const bx of [CX - 150, CX, CX + 150]) {
+        for (const z of [-DW / 2 + 14, 0, DW / 2 - 14]) add(new THREE.CylinderGeometry(9, 11, DEEP, 7), wet, bx, -18 - DEEP / 2, by + z);
+        add(new THREE.BoxGeometry(22, 16, DW + 10), dark, bx, -22, by);
+        const dz = DW - 28, dy = SEA - 70, len = Math.hypot(dz, dy), a = Math.atan2(dz, dy);
+        for (const s of [-1, 1]) add(new THREE.BoxGeometry(8, len, 8), wet, bx + s * 6, -30 - dy / 2, by, s * a);
+      }
+      for (const s of [-1, 1]) {
+        const x = CX + s * (LEN / 2 - 8), z = by - DW / 2 - 6;
+        add(new THREE.CylinderGeometry(5, 6, 110, 6), dark, x, 55, z);
+        add(new THREE.BoxGeometry(18, 22, 18), dark, x, 118, z);
+        const glow = glowSprite(0xffb060, 110); glow.position.set(x, 116, z); scene.add(glow);
+        const light = G.kit.light(0xffa050, 1.4, 520, 2); light.position.set(x, 125, z); scene.add(light);
+      }
+    }
+    scene.add(G.kit.mergeStatic(bg, new Set()));
+  }
+
+  // ---- The Docks: harbor water a little below the quays, stone quay walls with timber fenders and
+  // bollards, plank bridges over the channels, and the ship moored in the basin: a timber hull with shields
+  // along its sides, a planked deck (the middle base stands on it), two masts with furled sails, gangways
+  // boarding it through gaps in its rail, and mooring lines to the bank.
+  function buildDocks(rand) {
+    const m = G.map, hb = m.layout.harbor, { W, H, CX, CY, RM, SA, SB, B, TIP, BW, OFF } = hb;
+    const WL = DOCK_WATER, DEEP = WL + 40, HALF = BW / 2;
+    seaTex = canvasTex(256, (g, s) => {
+      g.fillStyle = '#2c5262'; g.fillRect(0, 0, s, s);
+      for (let i = 0; i < 300; i++) {
+        const x = rand() * s, y = rand() * s, w = 6 + rand() * 24, light = rand() < 0.5;
+        g.strokeStyle = light ? `rgba(180,214,226,${0.1 + rand() * 0.22})` : `rgba(6,16,22,${0.15 + rand() * 0.25})`;
+        g.lineWidth = 1 + rand() * 1.6;
+        for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) {
+          g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + w / 2, y + oy - 3, x + ox + w, y + oy); g.stroke();
+        }
+      }
+    }, true);
+    const PAD = 2600;
+    seaTex.repeat.set((W + PAD * 2) / 420, (H + PAD * 2) / 420);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(W + PAD * 2, H + PAD * 2).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ map: seaTex, color: 0xb4ccd8, roughness: 0.25, metalness: 0.35 }));
+    sea.position.set(W / 2, -WL, H / 2);
+    sea.receiveShadow = true;
+    scene.add(sea);
+
+    // The quay edges: runs of points along the water, each with the way out over it.
+    const run = (fn, a, b, n) => { const out = []; for (let i = 0; i <= n; i++) out.push(fn(a + (b - a) * i / n)); return out; };
+    const steps = len => Math.max(1, Math.ceil(len / 40));
+    const channel = [
+      ...run(y => [CX - B, y], -OFF, CY - TIP, steps(CY - TIP + OFF)),
+      ...run(a => [CX - B * Math.cos(a), CY - TIP + B * Math.sin(a)], 0, Math.PI, steps(Math.PI * B)),
+      ...run(y => [CX + B, y], CY - TIP, -OFF, steps(CY - TIP + OFF))
+    ];
+    const westEdge = [...run(x => [x, -OFF], CX - B, -OFF, steps(CX)), ...run(y => [-OFF, y], -OFF, H + OFF, steps(H)), ...run(x => [x, H + OFF], -OFF, CX - B, steps(CX))];
+    const lines = [
+      run(a => [CX + Math.cos(a) * RM, CY + Math.sin(a) * RM], 0, Math.PI * 2, steps(Math.PI * 2 * RM)),
+      channel, channel.map(([x, y]) => [x, 2 * CY - y]).reverse(),
+      westEdge, westEdge.map(([x, y]) => [2 * CX - x, y]).reverse()
+    ].map(pts => {
+      pts = pts.filter((p, i) => !i || G.dist(p[0], p[1], pts[i - 1][0], pts[i - 1][1]) > 1);
+      let s = 0;
+      return pts.map((p, i) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], tl = G.dist(a[0], a[1], b[0], b[1]) || 1;
+        let nx = -(b[1] - a[1]) / tl, ny = (b[0] - a[0]) / tl;
+        if (hb.land(p[0] + nx * 20, p[1] + ny * 20).d > hb.land(p[0] - nx * 20, p[1] - ny * 20).d) { nx = -nx; ny = -ny; }
+        if (i) s += G.dist(p[0], p[1], pts[i - 1][0], pts[i - 1][1]);
+        return { x: p[0], y: p[1], nx, ny, s };
+      });
+    });
+    // Within a bridge's or gangway's width (plus pad) of where it meets the bank.
+    const nearBridge = (x, y, pad) => hb.bridges.some(k => {
+      const t = (x - k.ax) * k.ux + (y - k.ay) * k.uy, l = -(x - k.ax) * k.uy + (y - k.ay) * k.ux;
+      return t > -pad && t < k.len + pad && Math.abs(l) < HALF + pad;
+    });
+
+    // Quay walls: dressed stone under a timber capping, wet and weedy below the waterline.
+    const quayTex = canvasTex(256, (g, s) => {
+      g.fillStyle = '#6d6c69'; g.fillRect(0, 0, s, s);
+      const cap = s * 0.12, wl = s * WL / DEEP;
+      for (let row = 0, y = cap; y < s; row++, y += 30) {
+        for (let x = (row % 2) * -32; x < s; x += 64) {
+          const v = 88 + Math.floor(rand() * 34);
+          g.fillStyle = `rgb(${v},${v - 2},${v - 6})`; g.fillRect(x + 2, y + 2, 60, 26);
+        }
+      }
+      g.fillStyle = '#3d2e21'; g.fillRect(0, 0, s, cap);
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, cap - 3, s, 3);
+      const grd = g.createLinearGradient(0, wl - 30, 0, s);
+      grd.addColorStop(0, 'rgba(20,34,28,0)'); grd.addColorStop(0.3, 'rgba(20,34,28,0.75)'); grd.addColorStop(1, 'rgba(8,14,12,0.95)');
+      g.fillStyle = grd; g.fillRect(0, wl - 30, s, s - wl + 30);
+    }, true);
+    const pos = [], uv = [], idx = [];
+    for (const line of lines) {
+      const o = pos.length / 3;
+      line.forEach((p, i) => {
+        pos.push(p.x + p.nx, 0.5, p.y + p.ny, p.x + p.nx, -DEEP, p.y + p.ny);
+        uv.push(p.s / 200, 1, p.s / 200, 0);
+        if (i) { const a = o + (i - 1) * 2; idx.push(a, a + 2, a + 1, a + 2, a + 3, a + 1); }
+      });
+    }
+    const wallGeo = new THREE.BufferGeometry();
+    wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    wallGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    wallGeo.setIndex(idx);
+    wallGeo.computeVertexNormals();
+    const walls = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ map: quayTex, roughness: 0.95, side: THREE.DoubleSide }));
+    walls.receiveShadow = true;
+    scene.add(walls);
+
+    // The ship's outline at deck level: an ellipse round the walkable deck, drawn out to a pointed bow at
+    // the north. Gaps in its rail where the gangways come aboard.
+    const NS = 160, BOW = 220, hull = [];
+    for (let i = 0; i < NS; i++) {
+      const t = i / NS * Math.PI * 2, c = Math.cos(t);
+      const u = (SB + 28) * Math.sin(t) * (1 - 0.12 * Math.abs(c) ** 3);
+      const v = -(SA + 28) * c - (c > 0 ? BOW * (1 - Math.abs(Math.sin(t))) ** 2 : 0);
+      const port = (Math.abs(u) < HALF + 30 && Math.abs(v) > SA * 0.6) || (Math.abs(v) < HALF + 30 && Math.abs(u) > SB * 0.6);
+      hull.push({ u, v, c, port, top: port ? 0 : 36 + 90 * Math.abs(c) ** 6 });
+    }
+    hull.forEach((p, i) => {
+      const a = hull[(i + NS - 1) % NS], b = hull[(i + 1) % NS], tl = Math.hypot(b.u - a.u, b.v - a.v);
+      p.nx = (b.v - a.v) / tl; p.ny = -(b.u - a.u) / tl;
+      if (p.nx * p.u + p.ny * p.v < 0) { p.nx = -p.nx; p.ny = -p.ny; }
+      p.s = i ? hull[i - 1].s + G.dist(p.u, p.v, hull[i - 1].u, hull[i - 1].v) : 0;
+    });
+
+    // Surf: foam along the foot of every quay wall and round the hull at the waterline, drifting.
+    surfTex = canvasTex(256, (g, s) => {
+      g.clearRect(0, 0, s, s);
+      for (let i = 0; i < 600; i++) {
+        const y = rand() ** 1.8 * s, a = 0.5 * (1 - y / s);
+        g.fillStyle = `rgba(235,242,246,${a * (0.3 + rand() * 0.7)})`;
+        const x = rand() * s, w = 4 + rand() * 26;
+        for (const ox of [-s, 0, s]) g.fillRect(x + ox, y, w, 1.5 + rand() * 3);
+      }
+    }, true);
+    surfTex.wrapT = THREE.ClampToEdgeWrapping;
+    const waterline = hull.map(p => ({ x: CX + p.u * 0.94, y: CY + p.v * 0.94, nx: p.nx, ny: p.ny, s: p.s }));
+    waterline.push(Object.assign({}, waterline[0], { s: hull[NS - 1].s + G.dist(hull[0].u, hull[0].v, hull[NS - 1].u, hull[NS - 1].v) }));
+    const fp = [], fu = [], fi = [];
+    for (const line of [...lines, waterline]) {
+      const o = fp.length / 3;
+      line.forEach((p, i) => {
+        for (const [d, v] of [[2, 1], [90, 0]]) { fp.push(p.x + p.nx * d, -WL + 1.5, p.y + p.ny * d); fu.push(p.s / 240, v); }
+        if (i) { const a = o + (i - 1) * 2; fi.push(a, a + 2, a + 1, a + 2, a + 3, a + 1); }
+      });
+    }
+    const surfGeo = new THREE.BufferGeometry();
+    surfGeo.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
+    surfGeo.setAttribute('uv', new THREE.Float32BufferAttribute(fu, 2));
+    surfGeo.setIndex(fi);
+    surfGeo.computeVertexNormals();
+    scene.add(new THREE.Mesh(surfGeo, new THREE.MeshBasicMaterial({ map: surfTex, color: 0xb0c2cc, transparent: true, depthWrite: false, side: THREE.DoubleSide })));
+
+    // Timber fender piles against the quay walls, and iron bollards along the quay tops.
+    const g = new THREE.Group(), dark = mat(0x2e2219), wet = mat(0x231a13), iron = mat(0x2b2c2e), plank = mat(0x5a4330);
+    const add = (geo, material, x, y, z, ry = 0) => { const o = shadowed(new THREE.Mesh(geo, material)); o.position.set(x, y, z); o.rotation.y = ry; g.add(o); return o; };
+    const pile = new THREE.CylinderGeometry(8, 9, DEEP + 2, 7), bollard = new THREE.CylinderGeometry(9, 11, 22, 8), bollardCap = new THREE.CylinderGeometry(13, 13, 5, 8);
+    lines.forEach((line, li) => {
+      let nextPile = 0, nextPost = 200;
+      for (const p of line) {
+        if (p.s >= nextPile) {
+          nextPile = p.s + 150 + rand() * 50;
+          if (!nearBridge(p.x, p.y, 30)) add(pile, wet, p.x + p.nx * 10, -DEEP / 2 - 3, p.y + p.ny * 10);
+        }
+        if (li < 3 && p.s >= nextPost) {
+          nextPost = p.s + 380 + rand() * 120;
+          if (!nearBridge(p.x, p.y, 60)) { add(bollard, iron, p.x - p.nx * 26, 11, p.y - p.ny * 26); add(bollardCap, iron, p.x - p.nx * 26, 23, p.y - p.ny * 26); }
+        }
+      }
+    });
+
+    // Bridges and gangways: a plank deck on stringers, railings, timber piles down into the water, and a
+    // lantern at the landward end. Laid out along each bridge: t from end a, l across.
+    const DW = BW + 20;
+    for (const k of hb.bridges) {
+      const ry = Math.atan2(-k.uy, k.ux);
+      const at = (t, l) => [k.ax + k.ux * t - k.uy * l, k.ay + k.uy * t + k.ux * l];
+      const put = (geo, material, t, y, l) => { const [x, z] = at(t, l); return add(geo, material, x, y, z, ry); };
+      // Where the water starts and stops along the bridge: the bank, and the far bank or the hull's side.
+      let t0 = 140, t1 = k.len - 140;
+      if (k.gangway) {
+        const reach = Math.max(...hull.map(p => p.u * k.ux + p.v * k.uy).map(d => -d)), inner = G.dist(k.bx, k.by, CX, CY);
+        t1 = k.len - (reach - inner);
+      }
+      const from = t0 - 30, to = k.gangway ? t1 + 70 : t1 + 30, len = to - from, mid = (from + to) / 2, N = Math.ceil(len / 22);
+      for (let i = 0; i < N; i++) put(new THREE.BoxGeometry(len / N - 3, 5, DW - (i % 3) * 6), i % 2 ? plank : dark, from + (i + 0.5) * len / N, 3, 0);
+      for (const l of [-DW / 2 + 12, 0, DW / 2 - 12]) put(new THREE.BoxGeometry(len, 14, 16), dark, mid, -7, l);
+      for (const s of [-1, 1]) {
+        const l = s * (DW / 2 + 6), rl = t1 - t0 + 40, rm = (t0 - 20 + t1 + 20) / 2;
+        put(new THREE.BoxGeometry(rl + 10, 6, 7), dark, rm, 38, l);
+        put(new THREE.BoxGeometry(rl, 4, 5), dark, rm, 20, l);
+        const posts = Math.max(2, Math.round(rl / 70));
+        for (let i = 0; i <= posts; i++) put(new THREE.CylinderGeometry(4, 5, 42, 6), dark, t0 - 20 + i * rl / posts, 21, l);
+      }
+      // Piles: pairs under the deck, across the open water.
+      const bents = Math.max(1, Math.round((t1 - t0) / 160));
+      for (let i = 1; i < bents; i++) for (const l of [-DW / 2 + 16, DW / 2 - 16]) put(new THREE.CylinderGeometry(10, 12, DEEP, 7), wet, t0 + i * (t1 - t0) / bents, -DEEP / 2 - 8, l);
+      // A lantern on a post at the landward end (both ends of a channel bridge).
+      for (const t of k.gangway ? [t0 - 14] : [t0 - 14, t1 + 14]) {
+        const [x, z] = at(t, -(DW / 2 + 6) * (t > k.len / 2 ? -1 : 1));
+        add(new THREE.CylinderGeometry(5, 6, 110, 6), dark, x, 55, z);
+        add(new THREE.BoxGeometry(18, 22, 18), dark, x, 118, z);
+        const glow = glowSprite(0xffb060, 110); glow.position.set(x, 116, z); scene.add(glow);
+        const light = G.kit.light(0xffa050, 1.4, 520, 2); light.position.set(x, 125, z); scene.add(light);
+      }
+    }
+
+    // ---- The ship.
+    // Hull and rail as one surface, ring by ring: from the keel up the side to the top of the rail, over
+    // it and down its inboard face to the deck. Below the water it narrows toward the keel.
+    const rows = [[0.7, -WL - 90, 0], [0.94, -WL, 0], [1, 0, 0], [1, 'top', 0], [1, 'top', 18], [1, 0.5, 18]];
+    const hullTex = canvasTex(256, (g2, s) => {
+      // v runs from the keel (0) up to the rail's top (1): tarred below the waterline, then planks.
+      const y = h => s * (1 - (h + WL + 90) / (WL + 90 + 130));
+      g2.fillStyle = '#4a3424'; g2.fillRect(0, 0, s, s);
+      for (let h = -WL - 90; h < 130; h += 14) {
+        const v = 60 + Math.floor(rand() * 26);
+        g2.fillStyle = `rgb(${v + 16},${v},${v - 14})`; g2.fillRect(0, y(h + 14), s, y(h) - y(h + 14) - 2);
+        g2.fillStyle = 'rgba(15,10,6,0.6)'; g2.fillRect(0, y(h) - 2, s, 2);
+        for (let x = rand() * 60; x < s; x += 50 + rand() * 60) { g2.fillStyle = 'rgba(15,10,6,0.5)'; g2.fillRect(x, y(h + 14), 2, y(h) - y(h + 14)); }
+      }
+      g2.fillStyle = 'rgba(14,12,12,0.92)'; g2.fillRect(0, y(-WL + 6), s, s - y(-WL + 6));      // tar below the waterline
+      g2.fillStyle = '#7a2a1c'; g2.fillRect(0, y(-6), s, y(-20) - y(-6));                       // a painted strake under the deck line
+      g2.fillStyle = '#b08850'; g2.fillRect(0, y(-22), s, 3);
+    }, true);
+    const hp = [], huv = [], hi = [];
+    hull.forEach((p, i) => {
+      for (const [k, h, inset] of rows) {
+        const y = h === 'top' ? p.top : h;
+        hp.push(CX + p.u * k - p.nx * inset, y, CY + p.v * k - p.ny * inset);
+        huv.push(p.s / 220, (y + WL + 90) / (WL + 90 + 130));
+      }
+    });
+    const RN = rows.length;
+    for (let i = 0; i < NS; i++) {
+      const a = i * RN, b = ((i + 1) % NS) * RN;
+      for (let r = 0; r < RN - 1; r++) hi.push(a + r, b + r, a + r + 1, b + r, b + r + 1, a + r + 1);
+    }
+    const hullGeo = new THREE.BufferGeometry();
+    hullGeo.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3));
+    hullGeo.setAttribute('uv', new THREE.Float32BufferAttribute(huv, 2));
+    hullGeo.setIndex(hi);
+    hullGeo.computeVertexNormals();
+    scene.add(shadowed(new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({ map: hullTex, roughness: 0.85, side: THREE.DoubleSide }))));
+
+    // The deck: planks running fore and aft, worn pale where feet go, a dusting of snow.
+    const deckTex = canvasTex(256, (g2, s) => {
+      g2.fillStyle = '#4e3b29'; g2.fillRect(0, 0, s, s);
+      for (let x = 0; x < s; x += 32) {
+        let y = rand() * s;
+        const v = rand() * 22 - 11;
+        g2.fillStyle = `rgb(${104 + v},${80 + v},${55 + v})`; g2.fillRect(x + 1, 0, 30, s);
+        g2.fillStyle = 'rgba(30,20,12,0.7)'; g2.fillRect(x, 0, 2, s);
+        for (let k = 0; k < 2; k++) { g2.fillRect(x, y, 32, 2); y = (y + s / 2) % s; }
+        for (const dy of [6, 26]) { g2.fillStyle = 'rgba(20,14,8,0.8)'; g2.fillRect(x + 6, (y + dy) % s, 3, 3); g2.fillRect(x + 23, (y + dy) % s, 3, 3); }
+      }
+      for (let i = 0; i < 50; i++) {
+        const x = rand() * s, y = rand() * s, r = 4 + rand() * 16;
+        g2.fillStyle = `rgba(225,232,240,${0.08 + rand() * 0.16})`; g2.beginPath(); g2.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); g2.fill();
+      }
+    }, true);
+    deckTex.repeat.set(1 / 260, 1 / 260);
+    const shape = new THREE.Shape(hull.map(p => new THREE.Vector2(p.u - p.nx * 18, -(p.v - p.ny * 18))));
+    const deck = new THREE.Mesh(new THREE.ShapeGeometry(shape, 1).rotateX(-Math.PI / 2).translate(CX, 0.4, CY),
+      new THREE.MeshStandardMaterial({ map: deckTex, roughness: 0.9 }));
+    deck.receiveShadow = true;
+    scene.add(deck);
+
+    // Shields hung along both sides, between the gangways.
+    const shieldMats = [0x7a2a1c, 0xb08850, 0x3e5a72, 0xd2c6a8].map(c => mat(c));
+    const shieldGeo = new THREE.CylinderGeometry(17, 17, 4, 14).rotateX(Math.PI / 2), boss = new THREE.SphereGeometry(5, 8, 6);
+    hull.forEach((p, i) => {
+      if (p.port || p.top < 36 || Math.abs(p.c) > 0.8 || i % 2) return;
+      if (hull[(i + 1) % NS].port || hull[(i + NS - 1) % NS].port) return;
+      const x = CX + p.u + p.nx * 4, z = CY + p.v + p.ny * 4, ry = Math.atan2(p.nx, p.ny);
+      add(shieldGeo, shieldMats[(i / 2) % 4], x, p.top - 20, z, ry);
+      add(boss, iron, x + p.nx * 3, p.top - 20, z + p.ny * 3);
+    });
+
+    // Two masts fore and aft (solid in the map, see generateDocks), each with its yard and furled sail,
+    // a pennant at the top, and shrouds down to the rail.
+    const spar = mat(0x4a3423), sail = mat(0xd6ccb4), flag = mat(0x7a2a1c, { side: THREE.DoubleSide });
+    const rig = [];
+    for (const k of G.map.rocks) {
+      if (!k.mast) continue;
+      const v = k.y - CY, half = SB * Math.sqrt(Math.max(0, 1 - (v / SA) ** 2));
+      add(new THREE.CylinderGeometry(10, 16, 560, 10), spar, k.x, 280, k.y);
+      add(new THREE.CylinderGeometry(7, 7, half * 1.8, 8).rotateZ(Math.PI / 2), spar, k.x, 440, k.y + 4);
+      add(new THREE.CylinderGeometry(22, 22, half * 1.7, 10).rotateZ(Math.PI / 2).scale(1, 1.15, 0.9), sail, k.x, 418, k.y + 4);
+      add(new THREE.CylinderGeometry(16, 13, 26, 10), spar, k.x, 500, k.y);   // the crow's nest
+      const pennant = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -40, 0), new THREE.Vector3(0, -20, 90)]), flag);
+      pennant.geometry.computeVertexNormals();
+      pennant.position.set(k.x, 590, k.y); pennant.rotation.y = 0.6;
+      scene.add(pennant);
+      add(new THREE.CylinderGeometry(3, 3, 40, 5), spar, k.x, 575, k.y);
+      for (const s of [-1, 1]) for (const d of [-90, 0, 90]) {
+        const hv = (v + d) / SA, hw = (SB + 28) * Math.sqrt(Math.max(0, 1 - hv * hv));
+        rig.push(k.x, 520, k.y, k.x + s * hw, 40, k.y + d);
+      }
+    }
+    // Stays: mast to mast, and each masthead down to the stem or the stern.
+    const masts = G.map.rocks.filter(k => k.mast);
+    if (masts.length === 2) {
+      rig.push(masts[0].x, 540, masts[0].y, masts[1].x, 540, masts[1].y);
+      for (const k of masts) { const s = Math.sign(k.y - CY); rig.push(k.x, 540, k.y, CX, 130, CY + s * (SA + 28)); }
+    }
+    // Mooring lines, sagging from the rail to bollards on the bank.
+    for (const t of [0.75, Math.PI - 0.75, Math.PI + 0.75, 2 * Math.PI - 0.75]) {
+      const p = hull[Math.round(t / (Math.PI * 2) * NS) % NS], d = Math.hypot(p.u, p.v);
+      const ax = CX + p.u, az = CY + p.v, bx = CX + p.u / d * (RM + 30), bz = CY + p.v / d * (RM + 30);
+      add(bollard, iron, bx, 11, bz); add(bollardCap, iron, bx, 23, bz);
+      let px = ax, py = p.top, pz = az;
+      for (let i = 1; i <= 12; i++) {
+        const f = i / 12, x = G.lerp(ax, bx, f), z = G.lerp(az, bz, f), y = G.lerp(p.top, 20, f) - Math.sin(f * Math.PI) * 45;
+        rig.push(px, py, pz, x, y, z); px = x; py = y; pz = z;
+      }
+    }
+    const rigGeo = new THREE.BufferGeometry();
+    rigGeo.setAttribute('position', new THREE.Float32BufferAttribute(rig, 3));
+    scene.add(new THREE.LineSegments(rigGeo, new THREE.LineBasicMaterial({ color: 0x2a2018 })));
+    scene.add(G.kit.mergeStatic(g, new Set()));
   }
 
   function buildBases(rand) {
@@ -2469,7 +3243,7 @@
   // Snowfall drifts across the whole screen, over every view.
   function drawSnow(dt) {
     const c = octx;
-    c.fillStyle = 'rgba(210,215,225,0.55)';
+    c.fillStyle = day ? 'rgba(255,255,255,0.75)' : 'rgba(210,215,225,0.55)';
     for (const f of snow) {
       f.y += f.v * dt; f.x += (Math.sin((f.ph += dt)) * 14 - 25) * dt;
       if (f.y > viewH + 4) { f.y = -4; f.x = Math.random() * (viewW + 100); }
@@ -2575,7 +3349,8 @@
   const lightView = new THREE.Matrix4(), lightUp = new THREE.Vector3(0, 1, 0), tmpS = new THREE.Vector3();
   const SHADOW_PAD = 160, SHADOW_SNAP = 64;
   function fitShadow(cam) {
-    moon.position.set(cam.fx - 900, 1800, cam.fy - 1300);
+    // Moonlight from the north-west; the sun from the south-west, so the cliffs facing the camera are lit.
+    moon.position.set(cam.fx - (day ? 1100 : 900), day ? 1900 : 1800, cam.fy + (day ? 900 : -1300));
     moon.target.position.set(cam.fx, 0, cam.fy);
     // Same view matrix the shadow camera builds for itself (camera lookAt from the light to its target).
     lightView.lookAt(moon.position, moon.target.position, lightUp).setPosition(moon.position).invert();
@@ -2618,6 +3393,7 @@
 
     const split = views.length > 1;
     renderer.setScissorTest(split);
+    if (seaTex) { seaTex.offset.set(time * 0.004, time * 0.0025); surfTex.offset.x = time * 0.012; }
     octx.clearRect(0, 0, viewW, viewH);
     for (const v of views) {
       const cam = v.cam, hero = v.hero;
@@ -2626,7 +3402,7 @@
       // Shadow frustum follows the view; fog scales with zoom.
       fitShadow(cam);
       scene.fog.near = cam.dist * 1.05;
-      scene.fog.far = cam.dist * 2.3;
+      scene.fog.far = cam.dist * (day ? 3.2 : 2.3);
       syncLights(cam);
       paintSlots(hero, v.hover);
 

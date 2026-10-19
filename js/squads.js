@@ -66,13 +66,13 @@
       targets: 'buildings', burrow: { surface: G.m(4) }, desc: 'Buildings only · tunnels up to its target' },
     // Allies: a single unit, 1.5x the size of a soldier. `role` gives support allies their own brain
     // (see Squad.updateSupport); `prefer: 'buildings'` makes a fighter pick buildings before anything else.
-    engineer: { name: 'Engineer', bounty: 12, ally: true, role: 'engineer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 200, damage: 0, range: 20, cooldown: 0.5, speed: INFANTRY_SPEED },
+    engineer: { name: 'Engineer', bounty: 12, ally: true, role: 'engineer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 200, damage: 0, range: G.m(2), cooldown: 0.5, speed: INFANTRY_SPEED },
     medic: { name: 'Medic', bounty: 14, ally: true, role: 'medic', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 80, damage: 0, range: 250, cooldown: 1.5, speed: INFANTRY_SPEED },
     officer: { name: 'Officer', bounty: 16, ally: true, role: 'officer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 150, damage: 2, range: 300, cooldown: 0.75, speed: INFANTRY_SPEED },
     demolitionist: { name: 'Demolitionist', bounty: 18, ally: true, prefer: 'buildings', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 70, damage: 80, range: 1000, cooldown: 2.0, speed: INFANTRY_SPEED },
     // Summons: raised by heroes (see heroes.js), never trained. They follow their summoner, drop no gold
     // and crumble when their time runs out. cleave: melee hits splash this radius.
-    skeleton: { bounty: 0, summon: true, cols: 2, rows: 1, spacing: 40, r: 12, hp: 70, damage: 15, range: 14, cooldown: 1.5, speed: 80 },
+    skeleton: { bounty: 0, summon: true, cols: 5, rows: 1, spacing: 40, r: 12, hp: 70, damage: 15, range: 14, cooldown: 1.5, speed: 80 },
     skeletonSolo: { bounty: 0, summon: true, cols: 1, rows: 1, spacing: 0, r: 12, hp: 70, damage: 15, range: 14, cooldown: 1.5, speed: 80 },
     // hpDamage: hits for this share of its current health, `damage` at least.
     // absorb: rolls up friendly soldiers of these kinds it touches, growing with each (see absorb).
@@ -203,7 +203,8 @@
       let dx = tx - this.x, dy = ty - this.y, d = Math.hypot(dx, dy);
       if (d <= stop) return true;
       if (this.digIn > 0) return false;  // digging in
-      const via = !this.burrowed && G.steer(this, tx, ty);
+      // Burrowers tunnel under walls, but water still turns them (G.map.gapSteer).
+      const via = this.burrowed ? G.map.gapSteer(this, tx, ty) : G.steer(this, tx, ty);
       if (via && !via.wall) { dx = via.x - this.x; dy = via.y - this.y; d = Math.hypot(dx, dy) || 1; stop = 0; }
       const step = Math.min(d - stop, this.speed * this.speedMul * speedMul * dt);
       if (step <= 0) return false;  // stunned or rooted
@@ -504,8 +505,9 @@
           // March: turn the block toward the target and advance the anchor,
           // slowed down whenever the formation is stretched so the group stays together.
           // Walls in the way: the block makes for a gate too, so it files through instead of piling up.
-          // (Burrowers go straight under.)
-          const via = !k.burrow && G.steer({ x: this.x, y: this.y, r: 0, team: this.team }, this.target.x, this.target.y);
+          // (Burrowers go straight under walls, round water.)
+          const at = { x: this.x, y: this.y, r: 0, team: this.team };
+          const via = k.burrow ? G.map.gapSteer(at, this.target.x, this.target.y) : G.steer(at, this.target.x, this.target.y);
           const gx = via && !via.wall ? via.x : this.target.x, gy = via && !via.wall ? via.y : this.target.y;
           const dx = gx - this.x, dy = gy - this.y;
           const want = Math.atan2(dy, dx);

@@ -34,13 +34,6 @@
   G.foesInRadius = (team, x, y, r, opts) =>
     G.foesOf(team, opts).filter(e => G.dist(x, y, e.x, e.y) <= r + (e.r || 0));
 
-  // Distance from point (px, py) to segment (ax, ay)-(bx, by).
-  G.segDist = function (px, py, ax, ay, bx, by) {
-    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1;
-    const t = G.clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
-    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
-  };
-
   // Foes touching a thick line.
   G.foesInLine = (team, ax, ay, bx, by, width, opts) =>
     G.foesOf(team, opts).filter(e => G.segDist(e.x, e.y, ax, ay, bx, by) <= width / 2 + (e.r || 0));

@@ -53,7 +53,7 @@
     'Unbreakable Wall': cone(200, 1.8),
     'Banner of Hope': area(500),
     // Boneshaper
-    'Doug & Doug': area(70),
+    'Doug & Doug': area(110),
     "Death's Curse": line(200),
     'Back Again': self(500),
     'Bone Ball': area(60),

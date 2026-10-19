@@ -111,7 +111,7 @@
       if (b.dead || b.team === team) continue;
       const d = G.dist(x, y, b.x, b.y);
       for (const w of G.weaponsOf(b.type))
-        if (d <= w.range + 20 && d >= w.minRange) dps += (w.maxDamage || w.damage) / w.cooldown;
+        if (w.targets !== 'buildings' && d <= w.range + 20 && d >= w.minRange) dps += (w.maxDamage || w.damage) / w.cooldown;
     }
     return dps;
   }
@@ -228,7 +228,7 @@
       const x = best.reduce((a, s) => a + s.x, 0) / best.length, y = best.reduce((a, s) => a + s.y, 0) / best.length;
       return { x: x + ownDir() * 120, y };
     }
-    const front = G.bases.find(b => b.side === me.team && b.y === G.map.h / 2 && b.x === (me.team === T.ENEMY ? G.map.w - G.BASE_COLS[1] : G.BASE_COLS[1]));
+    const front = G.bases.find(b => b.side === me.team && b.front);
     return { x: front.x - ownDir() * 200, y: front.y };
   }
 
@@ -422,7 +422,7 @@
     const ux = dx / L, uy = dy / L;
     let hit = null, ha = Infinity;
     for (const k of G.map.solids()) {
-      if (k.wall) continue;  // walls: G.steer finds the way through or around (see walk)
+      if (k.wall || k.gap) continue;  // walls and water: G.steer finds the way through or around (see walk)
       if (G.dist(k.x, k.y, tx, ty) < k.cr + me.r + 4) continue;  // the destination itself (a building we attack)
       const rx = k.x - me.x, ry = k.y - me.y;
       const along = rx * ux + ry * uy;

@@ -6,7 +6,7 @@
   G.BUILDING_SALVAGE = 0.3;   // share of a building's cost left behind when it's destroyed
   G.PASSIVE_INCOME = 1;       // gold a second every hero earns, fallen or not
   const PICKUP_REACH = 22;    // edge-to-edge distance at which a hero scoops up a pile
-  const COIN_LIFETIME = 10;   // seconds an unclaimed pile lies on the ground before it despawns
+  const COIN_LIFETIME = 15;  // seconds an unclaimed pile lies on the ground before it despawns
   const COIN_R = 10;         // pile radius at the smallest size
 
   G.coins = [];

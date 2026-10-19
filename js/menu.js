@@ -268,7 +268,7 @@
   // Gamepads: Bluetooth Xbox controllers appear through the standard Gamepad API.
   // Browsers only expose a pad after it has had a button pressed.
   // ---------------------------------------------------------------------------
-  const BTN = { A: 0, B: 1, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+  const BTN = { A: 0, B: 1, LB: 4, RB: 5, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
   const prevButtons = {};  // pad index -> array of pressed flags
   const prevAxis = {};     // pad index -> { x, y } as -1/0/1
 
@@ -278,6 +278,16 @@
   let seats = [], nextSeat = 0;
   // Each army's race (index into G.RACES): one per side, so teammates share it.
   const teamRace = { west: 0, east: 1 };
+  // The battlefield (index into G.MAPS), remembered from the last match set up on this PC.
+  let mapIdx = Math.max(0, G.MAPS.findIndex(m => m.id === G.savedMapId()));
+  function cycleMap(d) { mapIdx = (mapIdx + d + G.MAPS.length) % G.MAPS.length; }
+  // A map picker (.mapPick): the map's name and blurb; `canPick` false hides its arrows.
+  function renderMapPick(el, mapId, canPick) {
+    const m = G.mapById(mapId);
+    el.querySelector('.val').textContent = m.name;
+    el.querySelector('.desc').textContent = m.desc;
+    for (const b of el.querySelectorAll('button')) b.hidden = !canPick;
+  }
   // Single player and developer mode: one card per side (hero indices into G.HEROES).
   const picks = {
     west: { hero: 0, row: 0, ready: false },
@@ -334,7 +344,7 @@
       };
       prevButtons[p.index] = now;
       prevAxis[p.index] = ax;
-      handlePad(p, { a: down(BTN.A), b: down(BTN.B), start: down(BTN.START), ...dir });
+      handlePad(p, { a: down(BTN.A), b: down(BTN.B), lb: down(BTN.LB), rb: down(BTN.RB), start: down(BTN.START), ...dir });
     }
     if (screen === 'local') refreshPadList();
   }
@@ -365,6 +375,8 @@
         show('select');
       }
     } else if (screen === 'select') {
+      // LB / RB on any controller: the map.
+      if (e.lb || e.rb) { cycleMap(e.rb ? 1 : -1); renderSelect(); }
       if (selectMode === 'single') { handleSinglePad(e); return; }
       // Developer mode: the first controller drives your (west) card.
       const card = cards().find(c => (selectMode === 'dev' ? c.key === 'west' : c.input === p.index));
@@ -500,10 +512,10 @@
     const pads = connectedPads();
     const dev = selectMode === 'dev', single = selectMode === 'single', local = selectMode === 'local';
     root.querySelector('#selectHint').textContent = dev
-      ? 'Pick your race and hero, and the race you will fight. Click ‹ › (or ◀ ▶ on a controller) to change.'
+      ? 'Pick your race and hero, the race you will fight and the map. Click ‹ › (or ◀ ▶ on a controller, LB / RB for the map) to change.'
       : single
-        ? 'Pick your race and hero, then the CPU’s race, hero and difficulty. Click ‹ › (or ▲ ▼ ◀ ▶ on a controller, Ⓐ to begin).'
-        : '▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo. Start begins when everyone is ready; each army’s first player picks its race. Mouse & keyboard: click ‹ › and Lock in, then Begin.';
+        ? 'Pick your race and hero, then the CPU’s race, hero and difficulty, and the map. Click ‹ › (or ▲ ▼ ◀ ▶ on a controller, LB / RB for the map, Ⓐ to begin).'
+        : '▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo, LB / RB to change the map. Start begins when everyone is ready; each army’s first player picks its race. Mouse & keyboard: click ‹ › and Lock in, then Begin.';
     const list = cards();
     for (const el of root.querySelectorAll('.pick:not(.seat)')) el.hidden = local;
     root.querySelector('.screen[data-screen="select"] .sides').classList.toggle('many', list.length > 2);
@@ -560,6 +572,7 @@
     }
     // Cards not on this screen stop rendering their previews.
     for (const k of preview.keys()) if (k !== 'net' && !list.some(c => c.key === k)) preview.drop(k);
+    renderMapPick(root.querySelector('.screen[data-screen="select"] .mapPick'), G.MAPS[mapIdx].id, true);
     root.querySelector('#beginLocal').disabled = !allReady();
     root.querySelector('#beginLocal').textContent = dev ? 'Enter Sandbox' : 'Begin Battle';
   }
@@ -693,6 +706,7 @@
     G.matchConfig = {
       mode: selectMode === 'dev' ? 'developer' : selectMode,
       difficulty: selectMode === 'single' ? G.DIFFICULTIES[cpuDiff].id : undefined,
+      map: G.MAPS[mapIdx].id,
       sides: SIDES.map(s => ({
         side: s.key,
         race: G.RACES[teamRace[s.key]].id,
@@ -701,6 +715,7 @@
       // Local multiplayer: each player's army, controller (a pad index or 'mkb') and hero, west first.
       players: selectMode === 'local' ? cards().map(c => ({ side: c.side, gamepad: c.input, hero: G.HEROES[c.pk.hero].id })) : undefined
     };
+    G.saveMapId(G.matchConfig.map);
     // Remembered so "Play again" (which reloads) restarts the same match-up.
     try { sessionStorage.setItem('frost.match', JSON.stringify(G.matchConfig)); } catch (e) { /* storage blocked */ }
     // Single player and local multiplayer start their battle; developer mode drops into the sandbox.
@@ -779,8 +794,9 @@
     const me = L.players.find(p => p.id === G.net.myId) || L.players[0];
     $('#lobbyTitle').textContent = `Room “${L.room}”`;
     $('#lobbyHint').textContent = host
-      ? 'Other players: Network Multiplayer → type this room name → Join Room. Pick the races, then start when everyone is in.'
-      : 'Pick your side and hero. The host picks the races and starts the battle.';
+      ? 'Other players: Network Multiplayer → type this room name → Join Room. Pick the races and the map, then start when everyone is in.'
+      : 'Pick your side and hero. The host picks the races and the map, and starts the battle.';
+    renderMapPick($('#lobbyMap'), L.map, host && !L.started);
     [0, 1].forEach(team => {
       const card = root.querySelector(`.team[data-team="${team}"]`);
       const race = G.RACES.find(r => r.id === L.races[team]) || G.RACES[0];
@@ -856,6 +872,10 @@
       }
     });
     for (const [sel, d] of [['.prev', -1], ['.next', 1]]) {
+      $('#lobbyMap ' + sel).addEventListener('click', () => {
+        const i = G.MAPS.findIndex(m => m.id === G.net.lobby.map);
+        G.net.setMap(G.MAPS[(i + d + G.MAPS.length) % G.MAPS.length].id);
+      });
       root.querySelector('.mine .hero ' + sel).addEventListener('click', () => {
         const L = G.net.lobby, me = L && L.players.find(p => p.id === G.net.myId);
         if (!me) return;
@@ -906,6 +926,9 @@
     root.querySelector('#selectBack').addEventListener('click', () => { unready(); show(selectMode === 'local' ? 'local' : 'home'); });
     root.querySelector('#toSelect').addEventListener('click', () => show('select'));
     root.querySelector('#beginLocal').addEventListener('click', beginLocal);
+    for (const [sel, d] of [['.prev', -1], ['.next', 1]]) {
+      root.querySelector(`.screen[data-screen="select"] .mapPick ${sel}`).addEventListener('click', () => { cycleMap(d); renderSelect(); });
+    }
     for (const s of SIDES) {
       const col = root.querySelector(`.side[data-side="${s.key}"]`);
       // A player's controller select: another input (swapping with whoever had it), or Leave.

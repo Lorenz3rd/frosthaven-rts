@@ -1,4 +1,4 @@
-// Bases & buildings: each side has 6 circular bases; each base has 6 radial building slots.
+// Bases & buildings: circular bases laid out by the map (see map.js); each has 6 radial building slots (some maps: 4).
 (function (G) {
   const SCALE = 3;                 // size multiplier for bases and buildings
   const BASE_R = 170 * SCALE;      // base radius
@@ -8,10 +8,10 @@
   const BUILDING_HP = 1500;
   const BARRACKS_HP = 1000;        // troop barracks (not the Allies buildings)
   // Defense weapons, shared by the towers and the Fortress (which carries several at once).
-  const DIGIN_WEAPON = { range: G.m(12), minRange: 0, cooldown: 0.3, damage: 20, targets: 'all', pick: 'nearest', shot: 'arrow', muzzle: 40, speed: 900 };
-  const SUPPORT_WEAPON = { range: G.m(33), minRange: 0, cooldown: 1.6, damage: 90, targets: 'units', pick: 'nearest', shot: 'bolt', muzzle: 230, speed: 1300 };
-  const SIEGE_WEAPON = { range: G.m(41), minRange: G.m(12), cooldown: 8.0, damage: 250, bldgMul: 2, targets: 'all', pick: 'buildings',
-    roll: { distance: 380, speed: 420, falloff: 0.75, minDamage: 10, radius: 45 }, shot: 'boulder', muzzle: 70, speed: 700 };
+  const DIGIN_WEAPON = { range: G.m(15), minRange: 0, cooldown: 0.3, damage: 20, targets: 'all', pick: 'nearest', shot: 'arrow', muzzle: 40, speed: 900 };
+  const SUPPORT_WEAPON = { range: G.m(25), minRange: 0, cooldown: 1.6, damage: 90, targets: 'units', pick: 'nearest', shot: 'bolt', muzzle: 230, speed: 1300 };
+  const SIEGE_WEAPON = { range: G.m(41), minRange: G.m(12), cooldown: 10, damage: 500, targets: 'buildings', pick: 'nearest',
+    shot: 'boulder', muzzle: 70, speed: 700 };
   // Wall: 6 segments on a ring just inside the base edge, one in front of each slot. Each segment is
   // made of posts (collision circles, see G.buildingSolids); the posts in its middle form a gate that
   // only its own side walks through. G.steer routes walkers through gates and around walled bases.
@@ -27,29 +27,29 @@
     // No gameplay effects yet: these only differ in name and model.
     hut: { name: 'Hut', cost: 50, r: 26 * SCALE },
     // Defense: `weapon` (or `weapons`, several firing on their own) makes the building shoot (see towers.js).
-    //   range/minRange: center-to-target distance. targets: 'units' or 'all' (units + buildings).
+    //   range/minRange: center-to-target distance. targets: 'units', 'buildings' or 'all' (units + buildings).
     //   pick: 'nearest', 'buildings' (buildings first, else the nearest) or 'maxHp' (highest max health).
     //   bldgMul: damage multiplier against buildings. splash: shots hurt every hostile this close to where they land.
     //   roll: boulder keeps rolling after landing, hurting everything within radius; each hit multiplies its damage by
     //   falloff and it stops once damage drops below minDamage, so it can't flatten a whole squad.
     //   beam: a constant ray that locks onto one target, hitting every `cooldown` for `damage`, multiplied by
     //   `ramp` after each hit up to `maxDamage`; it starts over on a new target.
-    digin: { name: 'Dig-in', cost: 100, r: 26 * SCALE, weapon: DIGIN_WEAPON },
+    digin: { name: 'Dig-In', cost: 100, r: 26 * SCALE, weapon: DIGIN_WEAPON },
     // Command Center: one per side, at the center of its back-middle base; can't be built or torn down.
     // `hp` overrides BUILDING_HP. Destroying the enemy's wins the game (see G.destroyBuilding).
     command: { name: 'Command Center', cost: 0, r: 48 * SCALE, hp: 5000, command: true,
-      weapon: Object.assign({}, DIGIN_WEAPON, { range: G.m(20), cooldown: 1.5, damage: 200, muzzle: 230 }) },
-    support: { name: 'Support Tower', cost: 150, r: 22 * SCALE, weapon: SUPPORT_WEAPON },
-    siege: { name: 'Siege Machine', cost: 250, r: 26 * SCALE, weapon: SIEGE_WEAPON },
+      weapon: Object.assign({}, DIGIN_WEAPON, { range: G.m(15), cooldown: 1.5, damage: 200, muzzle: 230 }) },
+    support: { name: 'Support-Tower', cost: 150, r: 22 * SCALE, weapon: SUPPORT_WEAPON },
+    siege: { name: 'Siege', cost: 300, r: 26 * SCALE, weapon: SIEGE_WEAPON },
     // Wall: built from any slot, it rings the whole base without taking the slot. Each of its `segments`
     // is a building of its own (type wallSegment) that foes target and break separately.
     wall: { name: 'Wall', cost: 250, wall: true, segments: SLOT_COUNT },
     wallSegment: { name: 'Wall', cost: 250 / SLOT_COUNT, r: 30, hp: 750, segment: true, menu: false },
     energy: { name: 'Energy Weapon', cost: 300, r: 22 * SCALE,
       weapon: { range: G.m(12), minRange: 0, cooldown: 0.5, damage: 3, ramp: 2, maxDamage: 96, targets: 'units', pick: 'maxHp', beam: true, muzzle: 250 } },
-    rock: { name: 'Rock Launcher', cost: 175, r: 26 * SCALE,
-      weapon: { range: G.m(20), minRange: 0, cooldown: 5.0, damage: 50, splash: G.m(1), targets: 'all', pick: 'nearest', shot: 'boulder', muzzle: 90, speed: 650 } },
-    // Fortress: two dig-ins, a support tower and a siege machine in one spot.
+    rock: { name: 'Rock Launch', cost: 175, r: 26 * SCALE,
+      weapon: { range: G.m(20), minRange: 0, cooldown: 6, damage: 50, splash: G.m(1), targets: 'all', pick: 'nearest', shot: 'boulder', muzzle: 90, speed: 650 } },
+    // Fortress: two dig-ins, a support tower and a siege in one spot.
     fortress: { name: 'Fortress', cost: 800, r: 28 * SCALE, hp: 2500,
       weapons: [DIGIN_WEAPON, Object.assign({}, DIGIN_WEAPON, { muzzle: 120 }), Object.assign({}, SUPPORT_WEAPON, { muzzle: 260 }), SIEGE_WEAPON] },
     // Storm Tower: no weapon. Its field covers the whole base: ranged attacks from outside can't hit
@@ -87,54 +87,46 @@
 
   G.SLOT_R = SLOT_R;
   G.bases = [];
-  G.BASE_COLS = [650, 2030];
 
+  // The bases of the map in play (see map.js layouts). A base's `slots` building slots (6 unless the
+  // layout says otherwise) sit round its center; its wall always has SLOT_COUNT segments.
   G.createBases = function () {
-    const m = G.map;
-    // Edge-to-edge gaps: 360 between bases on a side, 1920 between the two sides.
-    const cols = G.BASE_COLS;                     // distance from each side's outer edge
-    const rows = [m.h / 2 - 1280, m.h / 2, m.h / 2 + 1280];
     G.bases = [];
     G.buildingsChanged();
-    for (const side of [G.TEAM.PLAYER, G.TEAM.ENEMY]) {
-      for (const cx of cols) {
-        for (const y of rows) {
-          const x = side === G.TEAM.PLAYER ? cx : m.w - cx;
-          const slots = [];
-          for (let i = 0; i < SLOT_COUNT; i++) {
-            const a = -Math.PI / 2 + (i / SLOT_COUNT) * Math.PI * 2;
-            slots.push({ x: x + Math.cos(a) * SLOT_RING, y: y + Math.sin(a) * SLOT_RING, building: null });
-          }
-          // Wall slots: where each wall segment stands (its middle, on the wall ring), in front of
-          // build slot i, with the posts it is made of. Never built on directly (see G.buildWall).
-          const walls = [];
-          for (let i = 0; i < SLOT_COUNT; i++) {
-            const a = -Math.PI / 2 + (i / SLOT_COUNT) * Math.PI * 2, posts = [];
-            const n = Math.round(2 * WALL_SPAN * WALL_R / POST_GAP);
-            for (let k = 0; k < n; k++) {
-              const d = -WALL_SPAN + (k + 0.5) / n * 2 * WALL_SPAN;
-              posts.push({ x: x + Math.cos(a + d) * WALL_R, y: y + Math.sin(a + d) * WALL_R, cr: POST_R, gate: Math.abs(d) < GATE_HALF });
-            }
-            walls.push({ x: x + Math.cos(a) * WALL_R, y: y + Math.sin(a) * WALL_R, building: null, wall: true, angle: a, posts });
-          }
-          slots.push(...walls);
-          // team: owner, or null while neutral. side: which half of the map it sits on.
-          G.bases.push({ id: G.bases.length, x, y, r: BASE_R, side, team: null, slots, walls });
-        }
+    for (const def of G.map.layout.bases) {
+      const { x, y } = def, n = def.slots || SLOT_COUNT;
+      const slots = [];
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+        slots.push({ x: x + Math.cos(a) * SLOT_RING, y: y + Math.sin(a) * SLOT_RING, building: null });
       }
+      // Wall slots: where each wall segment stands (its middle, on the wall ring), with the posts it is
+      // made of. Never built on directly (see G.buildWall).
+      const walls = [];
+      for (let i = 0; i < SLOT_COUNT; i++) {
+        const a = -Math.PI / 2 + (i / SLOT_COUNT) * Math.PI * 2, posts = [];
+        const n = Math.round(2 * WALL_SPAN * WALL_R / POST_GAP);
+        for (let k = 0; k < n; k++) {
+          const d = -WALL_SPAN + (k + 0.5) / n * 2 * WALL_SPAN;
+          posts.push({ x: x + Math.cos(a + d) * WALL_R, y: y + Math.sin(a + d) * WALL_R, cr: POST_R, gate: Math.abs(d) < GATE_HALF });
+        }
+        walls.push({ x: x + Math.cos(a) * WALL_R, y: y + Math.sin(a) * WALL_R, building: null, wall: true, angle: a, posts });
+      }
+      slots.push(...walls);
+      // team: owner, or null while neutral. side: which side's half of the map it sits on (null: neither).
+      // hq: the side's Command Center base. front: where its CPU hero holds the line.
+      G.bases.push({ id: G.bases.length, x, y, r: BASE_R, side: def.side ?? null, team: null, slots, walls, hq: !!def.hq, front: !!def.front });
     }
     return G.bases;
   };
 
-  // Each side's Command Center stands in the center of its furthest-back middle base.
-  // It lives in an extra `core` slot at the base center, so everything that walks base.slots
-  // (building lists, solids, storm fields, base ownership) sees it like any other building.
+  // Each side's Command Center stands in the center of its hq base (Frosthaven: the middle rear base;
+  // Mountain: the camp in its corner). It lives in an extra `core` slot at the base center, so everything
+  // that walks base.slots (building lists, solids, storm fields, base ownership) sees it like any other building.
   G.createCommandCenters = function () {
-    const m = G.map;
     G.commandCenters = {};
     for (const side of [G.TEAM.PLAYER, G.TEAM.ENEMY]) {
-      const x = side === G.TEAM.PLAYER ? G.BASE_COLS[0] : m.w - G.BASE_COLS[0];
-      const base = G.bases.find(b => b.x === x && b.y === m.h / 2);
+      const base = G.bases.find(b => b.hq && b.side === side);
       const core = { x: base.x, y: base.y, building: null, core: true };
       base.slots.push(core);
       base.core = core;
@@ -371,7 +363,12 @@
   // in the way. Returns null for a clear path, { x, y } for a waypoint, or { wall } when an unbroken
   // wall of another side shuts it out: then it has to break that segment first.
   // A destination on the wall line itself (a wall segment) can be walked straight up to.
+  // Crevasses in the way come first: the walker heads round the end of one (G.map.gapSteer), minding walls.
   G.steer = function (e, tx, ty) {
+    const g = G.map.gapSteer(e, tx, ty);
+    return g ? wallSteer(e, g.x, g.y) || g : wallSteer(e, tx, ty);
+  };
+  function wallSteer(e, tx, ty) {
     const list = walledBases();
     if (!list.length) return null;
     const L = G.dist(e.x, e.y, tx, ty);
@@ -402,6 +399,6 @@
     const cc = base.core && base.core.building;
     if (!inside || lined || !cc) return { x: wx, y: wy };
     return bendAround(base, e, wx, wy, cc.r + r + 4, cc.r + r + 30);
-  };
+  }
 
 })(window.Game);

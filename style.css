@@ -38,6 +38,10 @@ html, body {
 #vignette {
   background: radial-gradient(ellipse at 50% 55%, transparent 45%, rgba(0, 0, 0, 0.55) 80%, rgba(0, 0, 0, 0.85) 100%);
 }
+body.daylight #vignette {
+  background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(0, 0, 0, 0.18) 85%, rgba(0, 0, 0, 0.35) 100%);
+}
+body.daylight #grain { opacity: 0.3; }
 
 /* Oversized and shifted with transform (compositor only): animating background-position repainted the
    whole full-screen layer on every step. */
@@ -340,6 +344,17 @@ body.in-menu > :not(#menu):not(script) { display: none !important; }
 #menu .pick .diff .val.griefs { color: #ff5a4a; text-shadow: 0 0 10px rgba(255, 70, 50, 0.6); }
 #menu .pick.ready .readyBtn { color: #9fd89a; }
 #menu .actions { display: flex; gap: 12px; }
+/* Map choice: under the pick cards, and in the network lobby (the host picks). */
+#menu .mapPick {
+  display: flex; align-items: center; gap: 8px; width: min(560px, 100%); padding: 8px 12px;
+  background: var(--frame); border: 1px solid #3b2e1e;
+}
+#menu .mapPick .k { width: 40px; flex: none; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: #8a7a62; }
+#menu .mapPick button { padding: 4px 10px; font-size: 18px; }
+#menu .mapPick button[hidden] { display: inline-block !important; visibility: hidden; }
+#menu .mapPick .mid { flex: 1; min-width: 0; text-align: center; }
+#menu .mapPick .val { font-size: 20px; color: #e9f2fa; }
+#menu .mapPick .desc { font-size: 11px; color: #b8a888; }
 /* Network multiplayer: room form and lobby */
 #menu .netForm { display: flex; flex-direction: column; gap: 10px; width: min(380px, 100%); }
 #menu .netForm label { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--frame); border: 1px solid #3b2e1e; }

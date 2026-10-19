@@ -1,7 +1,7 @@
 // Races: each side fields one. A race re-skins every building and unit (see the race model files under
-// js/models/) and renames its non-barracks buildings. Races are cosmetic, with one exception: each fields
-// two special troops of its own (`special`, the barracks types that train them; see G.BUILDINGS). Every
-// other troop is the same for everyone.
+// js/models/) and renames its non-barracks buildings; defenses keep the same name for every race.
+// Races are cosmetic, with one exception: each fields two special troops of its own (`special`, the
+// barracks types that train them; see G.BUILDINGS). Every other troop is the same for everyone.
 (function (G) {
   // trait: a short tagline for the lobby. shotFx colors tower/unit shot trails and impacts.
   G.RACES = [
@@ -12,8 +12,7 @@
       shotFx: { trail: '#ffb050', impact: '#e9dcc2' },
       special: ['barracksRam', 'barracksLongbow'],
       buildings: {
-        command: 'Frosthaven Keep', hut: 'Timber Hut', digin: 'Palisade Dig-in', support: 'Crossbow Watchtower',
-        siege: 'Catapult', storm: 'Storm Spire',
+        hut: 'Timber Hut', storm: 'Storm Spire',
         allyEngineer: 'Engineer Lodge', allyMedic: 'Medic Tent', allyOfficer: 'Officer Quarters', allyDemolitionist: 'Demolitionist Workshop'
       }
     },
@@ -24,8 +23,7 @@
       shotFx: { trail: '#bfe9ff', impact: '#dff4ff' },
       special: ['barracksStormspeaker', 'barracksIcespeaker'],
       buildings: {
-        command: 'Great Clan Hall', hut: 'Hide Yurt', digin: 'Snow Burrow', support: 'Icicle Spire',
-        siege: 'Glacier Hurler', storm: 'Blizzard Totem',
+        hut: 'Hide Yurt', storm: 'Blizzard Totem',
         allyEngineer: "Ice Carver's Hut", allyMedic: 'Shaman Hut', allyOfficer: "Chieftain's Throne", allyDemolitionist: 'Avalanche Cairn'
       }
     },
@@ -36,8 +34,7 @@
       shotFx: { trail: '#5fe0d8', impact: '#9ff0ea' },
       special: ['barracksWavethrower', 'barracksClawcrusher'],
       buildings: {
-        command: 'Abyssal Reef Throne', hut: 'Tide Shell', digin: 'Reef Trench', support: 'Spine Coral',
-        siege: 'Brine Mortar', storm: 'Maelstrom Pool',
+        hut: 'Tide Shell', storm: 'Maelstrom Pool',
         allyEngineer: 'Coral Nursery', allyMedic: 'Tidal Font', allyOfficer: "Warden's Spire", allyDemolitionist: 'Ink Grotto'
       }
     },
@@ -48,8 +45,7 @@
       shotFx: { trail: '#7fe8ff', impact: '#c8f6ff' },
       special: ['barracksRuinedMachine', 'barracksBurrowingBlade'],
       buildings: {
-        command: 'Prime Core', hut: 'Power Cell', digin: 'Sentry Nest', support: 'Arc Turret',
-        siege: 'Mortar Engine', storm: 'Aegis Pylon',
+        hut: 'Power Cell', storm: 'Aegis Pylon',
         allyEngineer: 'Repair Bay', allyMedic: 'Coolant Station', allyOfficer: 'Command Node', allyDemolitionist: 'Munitions Works'
       }
     }
