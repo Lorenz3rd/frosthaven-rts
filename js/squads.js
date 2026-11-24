@@ -66,17 +66,17 @@
       targets: 'buildings', burrow: { surface: G.m(4) }, desc: 'Buildings only · tunnels up to its target' },
     // Allies: a single unit, 1.5x the size of a soldier. `role` gives support allies their own brain
     // (see Squad.updateSupport); `prefer: 'buildings'` makes a fighter pick buildings before anything else.
-    engineer: { name: 'Engineer', bounty: 12, ally: true, role: 'engineer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 200, damage: 0, range: G.m(2), cooldown: 0.5, speed: INFANTRY_SPEED },
+    engineer: { name: 'Engineer', bounty: 12, ally: true, role: 'engineer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 200, damage: 0, range: G.m(4), cooldown: 0.5, speed: INFANTRY_SPEED },
     medic: { name: 'Medic', bounty: 14, ally: true, role: 'medic', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 80, damage: 0, range: 250, cooldown: 1.5, speed: INFANTRY_SPEED },
-    officer: { name: 'Officer', bounty: 16, ally: true, role: 'officer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 150, damage: 2, range: 300, cooldown: 0.75, speed: INFANTRY_SPEED },
+    officer: { name: 'Officer', bounty: 16, ally: true, role: 'officer', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 150, damage: 2, range: 300, cooldown: 0.75, speed: 150, desc: '10 m aura: +30% attack speed and +50% movement speed' },
     demolitionist: { name: 'Demolitionist', bounty: 18, ally: true, prefer: 'buildings', cols: 1, rows: 1, spacing: 0, r: 16.5, hp: 70, damage: 80, range: 1000, cooldown: 2.0, speed: INFANTRY_SPEED },
     // Summons: raised by heroes (see heroes.js), never trained. They follow their summoner, drop no gold
     // and crumble when their time runs out. cleave: melee hits splash this radius.
-    skeleton: { bounty: 0, summon: true, cols: 5, rows: 1, spacing: 40, r: 12, hp: 70, damage: 15, range: 14, cooldown: 1.5, speed: 80 },
-    skeletonSolo: { bounty: 0, summon: true, cols: 1, rows: 1, spacing: 0, r: 12, hp: 70, damage: 15, range: 14, cooldown: 1.5, speed: 80 },
+    skeleton: { bounty: 0, summon: true, cols: 5, rows: 1, spacing: 40, r: 12, hp: 70, damage: 30, range: 14, cooldown: 1.5, speed: 80 },
+    skeletonSolo: { bounty: 0, summon: true, cols: 1, rows: 1, spacing: 0, r: 12, hp: 70, damage: 30, range: 14, cooldown: 1.5, speed: 80 },
     // hpDamage: hits for this share of its current health, `damage` at least.
     // absorb: rolls up friendly soldiers of these kinds it touches, growing with each (see absorb).
-    boneBall: { bounty: 0, summon: true, cols: 1, rows: 1, spacing: 0, r: 30, hp: 400, damage: 120, hpDamage: 0.3, range: 26, cooldown: 1.5, speed: 110, barH: 105,
+    boneBall: { bounty: 0, summon: true, cols: 1, rows: 1, spacing: 0, r: 30, hp: 400, damage: 240, hpDamage: 0.6, range: 26, cooldown: 1.5, speed: 110, barH: 105,
       absorb: { kinds: ['skeleton', 'skeletonSolo'], reach: G.m(1), hp: 100, maxHp: 900 } },
     // The Bannerspear's squire: never attacks, just shadows her (see guard). Speed follows hers.
     charlie: { bounty: 0, summon: true, role: 'guardian', cols: 1, rows: 1, spacing: 0, r: 14, hp: 200, damage: 0, range: 20, cooldown: 1, speed: 172, barH: 80 }
@@ -87,8 +87,9 @@
   const ENGINEER_HEAL = 20;        // building hp per second
   const MEDIC_HEAL = 15;          // hp per splash, every `cooldown` seconds
   const MEDIC_RADIUS = 75;         // ~3/4 of the area an infantry block covers (4x3 at 44 spacing)
-  const OFFICER_AURA = 250;       // 5 m
+  const OFFICER_AURA = G.m(10);
   const OFFICER_HASTE = 1.3;       // attack speed multiplier inside the aura
+  const OFFICER_SPEED = 0.5;       // movement speed bonus inside the aura
   const GUARD_DIST = G.m(3);       // Charlie keeps about this far from his hero
   const GUARD_WATCH = G.m(12);     // ...and steps in front of hostiles this close to her
   const GUARD_REGEN = 1;           // hp per second
@@ -115,7 +116,7 @@
     for (const [t, x] of Object.entries(k.resist || {})) out.push(`takes ${pct(x)} ${x < 1 ? 'less' : 'more'} from ${SQUAD_KINDS[t].name}`);
     return out;
   };
-  const SPAWN_INTERVAL = 30;       // minimum seconds between squads per barracks
+  G.SPAWN_INTERVAL = 30;           // minimum seconds between squads per barracks
   const RETHINK = 0.5;             // seconds between squad target decisions
   const ENGAGE_RANGE = 260;        // squad breaks formation within this distance of its target
   const LEASH = 420;               // soldiers only chase hostiles this close to the squad target
@@ -787,7 +788,11 @@
     s.auraOn = false;
     for (const e of G.entities)
       if (e instanceof Soldier && e !== s && !e.dead && e.team === s.team &&
-        G.dist(e.x, e.y, s.x, s.y) <= OFFICER_AURA + e.r) { e.haste = 0.25; s.auraOn = true; }
+        G.dist(e.x, e.y, s.x, s.y) <= OFFICER_AURA + e.r) {
+        e.haste = 0.25;
+        G.addBuff(e, 'officerSpeed', 0.25, { speed: OFFICER_SPEED });
+        s.auraOn = true;
+      }
   }
 
   // Officer sidearm: fire at the nearest hostile already in range, without chasing it.
@@ -1055,6 +1060,42 @@
   }
 
   // Called once per update step: tick barracks spawn timers, run squads, clear out the fallen.
+  G.recallBarracks = function (b) {
+    if (!b || b.dead || !G.BUILDINGS[b.type] || !G.BUILDINGS[b.type].squad) return false;
+    if (b.spawnTimer === undefined) b.spawnTimer = 0;
+    if (b.spawnTimer > 0) return false;
+    const sq = b.squad;
+    if (!sq || !sq.alive.length) return false;
+
+    for (const s of sq.soldiers) {
+      s.dead = true;
+      s.hp = 0;
+      s.heroFollow = false;
+      s.commander = null;
+      s.cmd = null;
+      s.post = null;
+      s.cmdGroup = null;
+      s.foe = null;
+    }
+    for (const hero of G.entities) {
+      if (hero instanceof G.Hero && hero.followers) {
+        hero.followers = hero.followers.filter(s => s.squad !== sq);
+      }
+    }
+    G.squads = G.squads.filter(other => other !== sq);
+
+    const kind = G.BUILDINGS[b.type].squad;
+    const dir = b.team === G.TEAM.PLAYER ? 1 : -1;
+    const fresh = new Squad(b.x, b.y, b.team, dir > 0 ? 0 : Math.PI, kind);
+    fresh.home = b;
+    b.squad = fresh;
+    G.squads.push(fresh);
+    G.burst(b.x, b.y, '#ffffff', 20, 160);
+    fresh.think = 0;
+    b.spawnTimer = G.SPAWN_INTERVAL;
+    return true;
+  };
+
   G.updateSquads = function (dt) {
     updateFollowers(dt);
     for (const b of G.buildingList()) {
@@ -1064,7 +1105,7 @@
       b.spawnTimer = Math.max(0, b.spawnTimer - dt);
       // One squad at a time: wait until the last one is wiped out.
       if (b.spawnTimer > 0 || (b.squad && b.squad.alive.length)) continue;
-      b.spawnTimer = SPAWN_INTERVAL;
+      b.spawnTimer = G.SPAWN_INTERVAL;
       const dir = b.team === G.TEAM.PLAYER ? 1 : -1;
       // Troops pour out of the barracks itself (pushed to its walls), facing the enemy side.
       const sq = new Squad(b.x, b.y, b.team, dir > 0 ? 0 : Math.PI, kind);

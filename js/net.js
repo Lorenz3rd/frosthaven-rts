@@ -939,7 +939,8 @@
         case 'o': if (!h.dead && G.COMMAND_ORDERS.includes(c[1])) C.order(h, c[1]); break;
         case 'b': {
           const base = G.bases[c[1]], slot = base && base.slots[c[2]], def = G.BUILDINGS[c[3]];
-          if (slot && !slot.core && !slot.wall && def && !def.command && def.menu !== false && !h.dead) C.build(h, { base, slot }, c[3]);
+          if (slot && !slot.core && !slot.wall && def && !def.command && def.menu !== false && !h.dead &&
+              G.canBuildStructure(h, c[3], h.team)) C.build(h, { base, slot }, c[3]);
           break;
         }
       }
@@ -1039,7 +1040,7 @@
   const COMMON_F = ['x', 'y', 'r', 'hp', 'maxHp', 'team', 'dead', 'facing', 'flash', 'stunTimer', 'rootTimer', 'slowTimer', 'shieldAmt', 'shieldColor', 'marks', 'dots'];
   const HERO_F = COMMON_F.concat(['def', 'swing', 'swingAlt', 'castAnim', 'castSlot', 'moving', 'lift', 'untargetable', 'invisible', 'buffs',
     'gold', 'cooldowns', 'state', 'form', 'dash', 'attackTarget', 'demolishTarget', 'history', 'unlock']);
-  const SOLDIER_F = COMMON_F.concat(['kind', 'ranged', 'swing', 'moving', 'auraOn', 'aim', 'untargetable', 'ward', 'carapace', 'burrowed', 'digIn']);
+  const SOLDIER_F = COMMON_F.concat(['kind', 'ranged', 'swing', 'moving', 'auraOn', 'aim', 'untargetable', 'ward', 'carapace', 'burrowed', 'digIn', 'buffs']);
   const DUMMY_F = COMMON_F.concat(['homeX']);
   const CREATURE_F = COMMON_F.concat(['homeX', 'swing', 'moving']);
   const ENC_SPECIAL = {
@@ -1073,7 +1074,8 @@
     E: { list: () => G.entities, cls: e => (e instanceof G.Hero ? 'H' : e instanceof G.Soldier ? 'S' : e instanceof G.Creature ? 'N' : 'D'), encode: encEntity },
     B: { list: () => G.buildingList(), cls: b => 'b',
       encode: b => ({ k: slotKey(b), type: b.type, team: b.team, hp: round(b.hp), maxHp: b.maxHp, aim: b.aim === undefined ? null : round(b.aim), fired: b.fired ? round(b.fired) : 0,
-        beam: b.beam ? enc(b.beam, 1) : null, beamDmg: b.beamDmg || 0, cold: b.cold > 0 ? 1 : 0 }) },
+        beam: b.beam ? enc(b.beam, 1) : null, beamDmg: b.beamDmg || 0, cold: b.cold > 0 ? 1 : 0,
+        wallSlot: b.wallSlot === undefined ? null : b.wallSlot }) },
     P: { list: () => G.projectiles, cls: () => 'p', encode: encPlain, skip: () => ['t', 'traveled'] },
     T: { list: () => G.shots, cls: () => 't', encode: encPlain, skip: s => (s.rolling ? ['t'] : ['t', 'x', 'y', 'h']) },
     C: { list: () => G.coins, cls: () => 'c', encode: encPlain, skip: () => ['t'] },

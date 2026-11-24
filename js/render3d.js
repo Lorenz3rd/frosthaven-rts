@@ -1180,36 +1180,18 @@
       field.visible = false;
       scene.add(field);
 
-      baseViews.push({ base: b, ring, bannerMat, bannerGeo, bannerBase: bannerGeo.attributes.position.array.slice(), fire, fireCore, light, slots, field, phase: rand() * 10 });
+      const linkStart = G.dist(b.slots[0].x, b.slots[0].y, b.x, b.y) + G.SLOT_R;
+      const linkEnd = b.r - 22, linkLength = Math.max(1, linkEnd - linkStart);
+      const wallLink = new THREE.Mesh(new THREE.BoxGeometry(20, 18, linkLength), mat(0x6b5940));
+      wallLink.castShadow = wallLink.receiveShadow = true;
+      wallLink.visible = false;
+      scene.add(wallLink);
+      baseViews.push({ base: b, ring, bannerMat, bannerGeo, bannerBase: bannerGeo.attributes.position.array.slice(), fire, fireCore, light, slots, field,
+        wallLink, wallLinkSlot: null, wallLinkStart: linkStart, wallLinkEnd: linkEnd, phase: rand() * 10 });
     }
   }
 
   // ---------- models ----------
-  function makeHut(slot, base, team) {
-    const g = new THREE.Group();
-    const wood = mat(0x3a2a1d), dark = mat(0x16100b), stoneM = mat(0x2f2f31);
-    const found = new THREE.Mesh(new THREE.BoxGeometry(150, 14, 120), stoneM); found.position.y = 7;
-    const walls = new THREE.Mesh(new THREE.BoxGeometry(136, 70, 106), wood); walls.position.y = 49;
-    // Roof: a 4-sided pyramid, thatch underneath, a crust of dirty snow on top.
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(118, 80, 4), mat(0x3b3226)); roof.rotation.y = Math.PI / 4; roof.scale.z = 0.82; roof.position.y = 124;
-    const snowCap = new THREE.Mesh(new THREE.ConeGeometry(84, 58, 4), mat(0x7f8790)); snowCap.rotation.y = Math.PI / 4; snowCap.scale.z = 0.82; snowCap.position.y = 141;
-    const door = new THREE.Mesh(new THREE.BoxGeometry(4, 46, 30), dark); door.position.set(69, 37, 0);
-    const winMat = new THREE.MeshBasicMaterial({ color: 0xffa040 });
-    const win1 = new THREE.Mesh(new THREE.BoxGeometry(4, 16, 16), winMat); win1.position.set(69, 52, 34);
-    const win2 = win1.clone(); win2.position.z = -34;
-    const chimney = new THREE.Mesh(new THREE.BoxGeometry(20, 60, 20), stoneM); chimney.position.set(-30, 140, 26);
-    const glow = glowSprite(0xff8a30, 60, 0.6); glow.position.set(76, 52, 34);
-    const glow2 = glow.clone(); glow2.position.z = -34;
-    const flag = new THREE.Mesh(new THREE.PlaneGeometry(34, 22), mat(TEAM_HEX[team], { side: THREE.DoubleSide }));
-    flag.position.set(-30, 190, 26 + 18);
-    const fpole = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 50, 4), dark); fpole.position.set(-30, 185, 26);
-    g.add(shadowed(found), shadowed(walls), shadowed(roof), shadowed(snowCap), door, win1, win2, shadowed(chimney), glow, glow2, flag, fpole);
-    g.position.set(slot.x, 0, slot.y);
-    g.rotation.y = -Math.atan2(base.y - slot.y, base.x - slot.x);  // door faces the base center
-    g.scale.setScalar(0.95);
-    return g;
-  }
-
   function teamFlag(team, x, y, z) {
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(34, 22), mat(TEAM_HEX[team], { side: THREE.DoubleSide }));
     flag.position.set(x, y + 5, z + 18);
@@ -1217,7 +1199,7 @@
     return [flag, fpole];
   }
 
-  // Faces the base center, like the hut.
+  // Faces the base center.
   function placeInSlot(g, slot, base) {
     g.position.set(slot.x, 0, slot.y);
     g.rotation.y = -Math.atan2(base.y - slot.y, base.x - slot.x);
@@ -1981,7 +1963,7 @@
     return g;
   }
 
-  const BUILDING_MODELS = { command: makeCommand, hut: makeHut, digin: makeDigin, support: makeSupport, siege: makeSiege, storm: makeStorm,
+  const BUILDING_MODELS = { command: makeCommand, digin: makeDigin, support: makeSupport, siege: makeSiege, storm: makeStorm,
     wallSegment: makeWallSegment, energy: makeEnergy, rock: makeRock, fortress: makeFortress,
     barracks: makeBarracks,
     barracksArmored: (s, b, t) => makeBarracks(s, b, t, 'armored'),
@@ -2672,15 +2654,25 @@
       v.field.material.opacity = 0.09 + 0.03 * Math.sin(time * 1.3 + v.phase) + 0.02 * Math.sin(time * 2.9 + v.phase * 3);
       v.field.rotation.y = time * 0.02 + v.phase;
 
+      const wallSlot = G.wallBuildSlot(v.base);
+      v.wallLink.visible = !!wallSlot;
+      if (wallSlot && wallSlot !== v.wallLinkSlot) {
+        const a = Math.atan2(wallSlot.y - v.base.y, wallSlot.x - v.base.x), r = (v.wallLinkStart + v.wallLinkEnd) / 2;
+        v.wallLink.position.set(v.base.x + Math.cos(a) * r, 10, v.base.y + Math.sin(a) * r);
+        v.wallLink.rotation.y = Math.PI / 2 - a;
+        v.wallLinkSlot = wallSlot;
+      } else if (!wallSlot) v.wallLinkSlot = null;
+
       for (const s of v.slots) {
         const built = meshes.get(s.slot);
-        if (built && !s.slot.building) { crumble(built, s.slot.x, s.slot.y); meshes.delete(s.slot); s.mesh.visible = !s.slot.wall; }
+        if (built && !s.slot.building) { crumble(built, s.slot.x, s.slot.y); meshes.delete(s.slot); }
         if (s.slot.building) {
           s.mesh.visible = false;
           if (!meshes.has(s.slot)) { const h = buildingModel(s.slot, v.base, s.slot.building); meshes.set(s.slot, h); addModel(h, true); }
           aimTower(meshes.get(s.slot), s.slot.building);
           continue;
         }
+        s.mesh.visible = !s.slot.wall && s.slot !== wallSlot;
       }
     }
   }
@@ -2689,7 +2681,7 @@
   function paintSlots(hero, hover) {
     for (const v of baseViews) {
       for (const s of v.slots) {
-        if (s.slot.building || s.slot.core || s.slot.wall) continue;
+        if (s.slot.building || s.slot.core || s.slot.wall || G.wallBuildSlot(v.base) === s.slot) continue;
         const isHover = hover && hover.slot === s.slot;
         const ok = isHover && !G.buildCheck(hero, v.base, s.slot);
         s.mesh.material.color.setHex(isHover ? (ok ? 0x6adf7a : 0xd04a3a) : 0xc9d2da);
@@ -3238,6 +3230,18 @@
         c.beginPath(); c.moveTo(x - 9, y - 12); c.lineTo(x + 9, y - 12); c.lineTo(x, y); c.closePath();
         c.fillStyle = '#ff4a34'; c.fill();
         c.strokeStyle = 'rgba(0,0,0,0.8)'; c.lineWidth = 2; c.stroke();
+        const name = t.team === hero.team || t.team === G.TEAM.NEUTRAL ? null
+          : bd ? G.buildingName(t.type, t.team)
+            : t instanceof G.Soldier ? G.unitName(t.kind)
+              : t instanceof G.Hero ? t.def.name : null;
+        if (name) {
+          c.font = '600 14px Cinzel, Georgia, serif';
+          c.textAlign = 'center';
+          c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.9)';
+          c.strokeText(name, x, y - 17);
+          c.fillStyle = '#e9dcc2';
+          c.fillText(name, x, y - 17);
+        }
       }
     }
 

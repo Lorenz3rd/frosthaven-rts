@@ -4,16 +4,17 @@
 // drop. An ox never starts a fight, but hit it and it turns on whoever hit it.
 // There are always COUNT of them: one that falls is replaced at once, somewhere away from every hero.
 (function (G) {
-  const COUNT = 8;
-  const HP = 150;
+  const COUNT = 4;
+  const HP = 160;
   const R = 30;
-  const DAMAGE = 20, ATTACK_CD = 1;    // 20 damage a second
+  const EXPLODE_CHANCE = 0.3, EXPLODE_DAMAGE = 450, EXPLODE_RADIUS = G.m(11);
+  const DAMAGE = 60, ATTACK_CD = 1;    // 60 damage a second
   const REACH = 20;                    // edge-to-edge melee reach
   const IMPACT = 0.25;                 // seconds into the headbutt that it lands
   const WANDER_SPEED = G.m(1), CHASE_SPEED = G.m(2.6);
   const WANDER_STEP = G.m(8);          // how far one amble goes
   const LEASH = G.m(14);               // a chase ends this far from where it started
-  const COINS_MIN = 20, COINS_MAX = 40;
+  const COINS_MIN = 25, COINS_MAX = 50;
   const SPAWN_CLEAR = G.m(15);         // replacements appear at least this far from any hero
   // The two roaming zones { x0, x1, y0, y1 }, set by the map: no-man's-land above and below the middle lane.
   const zones = () => G.map.zones();
@@ -60,6 +61,15 @@
       super.die(src);
       G.dropCoins(this.x, this.y, COINS_MIN + Math.floor(Math.random() * (COINS_MAX - COINS_MIN + 1)));
       G.burst(this.x, this.y, '#8a6e52', 20, 200);
+      if (Math.random() < EXPLODE_CHANCE) {
+        G.burst(this.x, this.y, '#ff6b35', 36, 320);
+        const nearby = G.entities.concat(G.buildingList());
+        for (const e of nearby) {
+          if (e !== this && !e.dead && G.dist(this.x, this.y, e.x, e.y) <= EXPLODE_RADIUS + (e.r || 0)) {
+            e.takeDamage(EXPLODE_DAMAGE, { blast: true, color: '#ff6b35' });
+          }
+        }
+      }
     }
 
     // Give up the fight and amble back to where it started.
@@ -100,12 +110,14 @@
 
     // One step toward (tx, ty). True once there, or after being stuck against something for a moment.
     walk(tx, ty, speed, dt) {
+      const via = G.map.solidSteer(this, tx, ty);
+      if (via) { tx = via.x; ty = via.y; }
       const ox = this.x, oy = this.y;
       const dx = tx - this.x, dy = ty - this.y, d = Math.hypot(dx, dy);
       const step = speed * this.speedMul * dt;
       if (step <= 0) return false;
       this.moving = true;
-      if (d <= step) { this.x = tx; this.y = ty; G.map.resolve(this); return true; }
+      if (d <= step) { this.x = tx; this.y = ty; G.map.resolve(this); return !via; }
       this.facing = Math.atan2(dy, dx);
       this.x += dx / d * step; this.y += dy / d * step;
       G.map.resolve(this);

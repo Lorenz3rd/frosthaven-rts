@@ -1,5 +1,5 @@
 // Races: each side fields one. A race re-skins every building and unit (see the race model files under
-// js/models/) and renames its non-barracks buildings; defenses keep the same name for every race.
+// js/models/), but building names come from the shared catalog.
 // Races are cosmetic, with one exception: each fields two special troops of its own (`special`, the
 // barracks types that train them; see G.BUILDINGS). Every other troop is the same for everyone.
 (function (G) {
@@ -10,44 +10,28 @@
       desc: 'Frosthaven settlers. Timber, stone and steel.',
       trait: 'Timber, stone and steel',
       shotFx: { trail: '#ffb050', impact: '#e9dcc2' },
-      special: ['barracksRam', 'barracksLongbow'],
-      buildings: {
-        hut: 'Timber Hut', storm: 'Storm Spire',
-        allyEngineer: 'Engineer Lodge', allyMedic: 'Medic Tent', allyOfficer: 'Officer Quarters', allyDemolitionist: 'Demolitionist Workshop'
-      }
+      special: ['barracksRam', 'barracksLongbow']
     },
     {
       id: 'algox', name: 'Algox', color: '#9fd4ea',
       desc: 'Towering snow-folk of the northern crags. Hide, bone and living ice.',
       trait: 'Hide, bone and living ice',
       shotFx: { trail: '#bfe9ff', impact: '#dff4ff' },
-      special: ['barracksStormspeaker', 'barracksIcespeaker'],
-      buildings: {
-        hut: 'Hide Yurt', storm: 'Blizzard Totem',
-        allyEngineer: "Ice Carver's Hut", allyMedic: 'Shaman Hut', allyOfficer: "Chieftain's Throne", allyDemolitionist: 'Avalanche Cairn'
-      }
+      special: ['barracksStormspeaker', 'barracksIcespeaker']
     },
     {
       id: 'lurker', name: 'Lurker', color: '#3fc0c8',
       desc: 'Crab-folk risen from the frozen deep. Coral, shell and brine.',
       trait: 'Coral, shell and brine',
       shotFx: { trail: '#5fe0d8', impact: '#9ff0ea' },
-      special: ['barracksWavethrower', 'barracksClawcrusher'],
-      buildings: {
-        hut: 'Tide Shell', storm: 'Maelstrom Pool',
-        allyEngineer: 'Coral Nursery', allyMedic: 'Tidal Font', allyOfficer: "Warden's Spire", allyDemolitionist: 'Ink Grotto'
-      }
+      special: ['barracksWavethrower', 'barracksClawcrusher']
     },
     {
       id: 'unfettered', name: 'Unfettered', color: '#e0a040',
       desc: 'Self-made automatons of brass and lightning.',
       trait: 'Brass and lightning',
       shotFx: { trail: '#7fe8ff', impact: '#c8f6ff' },
-      special: ['barracksRuinedMachine', 'barracksBurrowingBlade'],
-      buildings: {
-        hut: 'Power Cell', storm: 'Aegis Pylon',
-        allyEngineer: 'Repair Bay', allyMedic: 'Coolant Station', allyOfficer: 'Command Node', allyDemolitionist: 'Munitions Works'
-      }
+      special: ['barracksRuinedMachine', 'barracksBurrowingBlade']
     }
   ];
 
@@ -70,6 +54,6 @@
   G.specialBarracks = team => G.raceDef(team).special || [];
 
   // Barracks carry no race name: they're named after the troops they train (see G.BUILDINGS).
-  G.buildingName = (type, team) => G.raceDef(team).buildings[type] || G.BUILDINGS[type].name;
+  G.buildingName = (type, team) => (G.raceDef(team).buildings && G.raceDef(team).buildings[type]) || G.BUILDINGS[type].name;
   G.unitName = kind => G.SQUAD_KINDS[kind].name || kind;
 })(window.Game);

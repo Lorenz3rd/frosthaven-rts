@@ -12,7 +12,7 @@
   const root = $('#menu');
   let screen = 'home';
   let rafId = 0;
-  // 'local' (split screen, two to four players), 'single' (you vs. the CPU: both sides' race and hero plus the CPU
+  // 'local' (split screen, human players and bots), 'single' (you vs. the CPU: both sides' race and hero plus the CPU
   // difficulty) or 'dev' (mouse: your side plus the enemy's race).
   let selectMode = 'local';
   // Single player: index into G.DIFFICULTIES (Medium), and which card a controller is working on.
@@ -45,7 +45,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Scrolling backdrop: a panning strip of frozen camps — walls, huts, towers,
+  // Scrolling backdrop: a panning strip of frozen camps — walls, towers,
   // braziers — with columns of troops marching between them.
   // ---------------------------------------------------------------------------
   const bg = $('#menuBg');
@@ -61,7 +61,7 @@
     for (let j = 0; j < n; j++) {
       buildings.push({
         x: 140 + j * (560 / n) + rnd() * 40,
-        kind: ['hut', 'tower', 'hall', 'hut'][Math.floor(rnd() * 4)],
+        kind: ['tower', 'hall'][Math.floor(rnd() * 2)],
         s: 0.8 + rnd() * 0.5
       });
     }
@@ -94,14 +94,7 @@
     ctx.fillStyle = '#1b1a1d';
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
-    if (b.kind === 'hut') {
-      ctx.fillStyle = '#3b3128';
-      ctx.fillRect(-34, -34, 68, 34);
-      ctx.fillStyle = '#e6eef5';
-      ctx.beginPath(); ctx.moveTo(-44, -30); ctx.lineTo(0, -66); ctx.lineTo(44, -30); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#ffb347';
-      ctx.fillRect(-8, -20, 16, 20);
-    } else if (b.kind === 'tower') {
+    if (b.kind === 'tower') {
       ctx.fillStyle = '#4a4440';
       ctx.fillRect(-16, -110, 32, 110);
       ctx.fillStyle = '#5a534d';
@@ -272,10 +265,9 @@
   const prevButtons = {};  // pad index -> array of pressed flags
   const prevAxis = {};     // pad index -> { x, y } as -1/0/1
 
-  // Local multiplayer seats, in join order: { id, input, side, hero, row, ready }. input is a pad index, or
-  // MKB for the mouse and keyboard (one seat at most); hero indexes G.HEROES. Up to four, three an army.
+  // Local multiplayer seats: human controllers and bots, up to three heroes per army.
   const MKB = 'mkb', MAX_SEATS = 4, MAX_ARMY = 3;
-  let seats = [], nextSeat = 0;
+  let seats = [], bots = [], nextSeat = 0, nextBot = 0;
   // Each army's race (index into G.RACES): one per side, so teammates share it.
   const teamRace = { west: 0, east: 1 };
   // The battlefield (index into G.MAPS), remembered from the last match set up on this PC.
@@ -304,29 +296,39 @@
   }
 
   const seatOf = input => seats.find(s => s.input === input) || null;
-  const armySize = side => seats.filter(s => s.side === side).length;
+  const armySize = side => seats.filter(s => s.side === side).length + bots.filter(b => b.side === side).length;
+  function nextHero() {
+    const taken = seats.concat(bots).map(s => s.hero);
+    return Math.max(0, G.HEROES.findIndex((h, i) => !taken.includes(i)));
+  }
   // A new player joins the smaller army (the west on a tie), with a hero nobody else starts on.
   function joinSeat(input, side) {
     if (seats.length >= MAX_SEATS || seatOf(input)) return;
     side = side || (armySize('west') <= armySize('east') ? 'west' : 'east');
     if (armySize(side) >= MAX_ARMY) side = side === 'west' ? 'east' : 'west';
-    const taken = seats.map(s => s.hero);
-    seats.push({ id: nextSeat++, input, side, hero: Math.max(0, G.HEROES.findIndex((h, i) => !taken.includes(i))), row: 0, ready: false });
+    if (armySize(side) >= MAX_ARMY) return;
+    seats.push({ id: nextSeat++, input, side, hero: nextHero(), row: 0, ready: false });
   }
   const leaveSeat = seat => { seats = seats.filter(s => s !== seat); };
+  function addBot(side) {
+    if (armySize(side) >= MAX_ARMY) return;
+    bots.push({ id: nextBot++, side, hero: nextHero(), difficulty: 1, row: 1, ready: false });
+  }
 
   // The cards on the pick screen: { key, side, pk, input, label }, west first. Local multiplayer has one per
-  // seat; single player and developer mode one per side. pk holds the card's hero, row and ready.
+  // participant; single player and developer mode one per side. pk holds the hero, row, and ready state.
   function cards() {
     if (selectMode !== 'local') return SIDES.map(s => ({ key: s.key, side: s.key, pk: picks[s.key], input: null, label: s.label }));
     const out = [];
     for (const s of SIDES) {
       const army = seats.filter(x => x.side === s.key);
       army.forEach((x, i) => out.push({ key: 's' + x.id, side: s.key, pk: x, input: x.input, label: s.label + (army.length > 1 ? ' · ' + (i + 1) : '') }));
+      const cpuArmy = bots.filter(x => x.side === s.key);
+      cpuArmy.forEach((x, i) => out.push({ key: 'b' + x.id, side: s.key, pk: x, input: null, bot: true, label: s.label + ' Bot ' + (i + 1) }));
     }
     return out;
   }
-  // Teammates share a race: the army's first player picks it.
+  // Teammates share a race: the army's first participant picks it.
   const picksRace = c => selectMode !== 'local' || cards().find(o => o.side === c.side).key === c.key;
 
   function pollPads() {
@@ -414,9 +416,9 @@
   // ---------------------------------------------------------------------------
   // Local multiplayer: controller assignment
   // ---------------------------------------------------------------------------
-  // Every army needs a player before the pick screen.
-  function armiesFilled() { return SIDES.every(s => armySize(s.key) > 0); }
-  function unready() { for (const c of [...seats, picks.west, picks.east]) c.ready = false; }
+  // Both armies need a hero, and a human player must remain to control the match.
+  function armiesFilled() { return seats.length > 0 && SIDES.every(s => armySize(s.key) > 0); }
+  function unready() { for (const c of [...seats, ...bots, picks.west, picks.east]) c.ready = false; }
 
   let lastPadSig = '';
   function refreshPadList() {
@@ -430,8 +432,7 @@
 
   const inputName = (input, pads) => input === MKB ? 'Mouse & Keyboard' : padName(pads.find(p => p.index === input));
   const inputValue = v => (v === MKB ? MKB : Number(v));
-  // Each army's column: a row per player (its select changes the controller, or removes them), a pulsing
-  // join line while there's room, and an Add select for mouse users.
+  // Each army lists human seats and bots; only human seats need a split-screen view.
   function renderLocal() {
     const pads = connectedPads();
     const inputs = [MKB, ...pads.map(p => p.index)];
@@ -439,11 +440,13 @@
     for (const s of SIDES) {
       const card = root.querySelector(`.side[data-side="${s.key}"]`);
       const army = seats.filter(x => x.side === s.key);
-      const room = seats.length < MAX_SEATS && army.length < MAX_ARMY;
-      card.classList.toggle('joined', army.length > 0);
+      const cpuArmy = bots.filter(x => x.side === s.key);
+      const room = seats.length < MAX_SEATS && armySize(s.key) < MAX_ARMY;
+      card.classList.toggle('joined', armySize(s.key) > 0);
       card.querySelector('.seats').innerHTML = army.map(x =>
         `<li><span class="pad">${x.input === MKB ? '⌨' : '🎮'}</span><select data-seat="${x.id}" aria-label="${s.label} player controller">` +
         `<option value="">— Leave —</option>${options(inputs)}</select></li>`).join('') +
+        cpuArmy.map((b, i) => `<li class="botSeat"><span class="pad">🤖</span><span class="status">Bot ${i + 1}</span><button type="button" data-bot="${b.id}" aria-label="Remove bot ${i + 1}">×</button></li>`).join('') +
         (room ? '<li class="open"><span class="pad">🎮</span><span class="status">Press Ⓐ (or Enter) to join</span></li>' : '');
       army.forEach(x => { card.querySelector(`select[data-seat="${x.id}"]`).value = String(x.input); });
       const free = inputs.filter(i => !seatOf(i));
@@ -451,6 +454,7 @@
       add.hidden = !room || !free.length;
       add.innerHTML = `<option value="">＋ Add a player…</option>${options(free)}`;
       add.value = '';
+      card.querySelector('.addBot').hidden = armySize(s.key) >= MAX_ARMY;
     }
     root.querySelector('.padCount').textContent = pads.length
       ? `${pads.length} controller${pads.length > 1 ? 's' : ''} detected`
@@ -465,12 +469,13 @@
     const pk = card.pk;
     if (pk.row === 0) teamRace[card.side] = (teamRace[card.side] + d + G.RACES.length) % G.RACES.length;
     else if (pk.row === 1) pk.hero = (pk.hero + d + G.HEROES.length) % G.HEROES.length;
+    else if (card.bot) pk.difficulty = G.clamp(pk.difficulty + d, 0, G.DIFFICULTIES.length - 1);
     else cpuDiff = G.clamp(cpuDiff + d, 0, G.DIFFICULTIES.length - 1);  // Easy -> 7 Griefs, no wrap
   }
 
   // In developer mode only your side picks a hero (the enemy has none yet). Only local multiplayer locks in.
   const picksHero = side => selectMode !== 'dev' || side === 'west';
-  function allReady() { return selectMode !== 'local' || cards().every(c => c.pk.ready); }
+  function allReady() { return selectMode !== 'local' || cards().filter(c => !c.bot).every(c => c.pk.ready); }
 
   // A pick card's element. Local multiplayer copies the side's card for each seat (class "seat"), west
   // cards before the VS and east after; the two originals serve single player and developer mode.
@@ -482,7 +487,7 @@
     el.classList.add('seat');
     el.hidden = false;
     const diff = el.querySelector('.diff');
-    if (diff) diff.remove();
+    if (diff && !c.bot) diff.remove();
     const vs = root.querySelector('.screen[data-screen="select"] .vs');
     if (c.side === 'west') vs.before(el); else vs.parentNode.appendChild(el);
     wireCard(el, c.key);
@@ -515,7 +520,7 @@
       ? 'Pick your race and hero, the race you will fight and the map. Click ‹ › (or ◀ ▶ on a controller, LB / RB for the map) to change.'
       : single
         ? 'Pick your race and hero, then the CPU’s race, hero and difficulty, and the map. Click ‹ › (or ▲ ▼ ◀ ▶ on a controller, LB / RB for the map, Ⓐ to begin).'
-        : '▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo, LB / RB to change the map. Start begins when everyone is ready; each army’s first player picks its race. Mouse & keyboard: click ‹ › and Lock in, then Begin.';
+        : '▲ ▼ choose race or hero, ◀ ▶ to change, Ⓐ to lock in, Ⓑ to undo, LB / RB to change the map. Bots are ready automatically; human players lock in before battle. Each army’s first participant picks its race. Mouse & keyboard: click ‹ › and Lock in, then Begin.';
     const list = cards();
     for (const el of root.querySelectorAll('.pick:not(.seat)')) el.hidden = local;
     root.querySelector('.screen[data-screen="select"] .sides').classList.toggle('many', list.length > 2);
@@ -526,11 +531,13 @@
       const card = cardEl(c);
       const pad = pads.find(p => p.index === c.input);
       const ownRace = picksRace(c);
+      const focused = !pk.ready && (!single || focusSide === c.key);
       if (!ownRace && pk.row === 0) pk.row = 1;
       card.querySelector('.label').textContent = dev || single ? (c.side === 'west' ? 'Your Army' : single ? 'CPU Army' : 'Enemy Army') : c.label;
       card.querySelector('.who').textContent = dev || single
         ? (c.side === 'west' ? 'Mouse & keyboard' : single ? 'Computer opponent' : 'Training opponent')
-        : c.input === MKB ? 'Mouse & keyboard' : pad ? padName(pad) : 'Controller disconnected';
+        : c.bot ? `Computer opponent · ${G.DIFFICULTIES[c.pk.difficulty].name}`
+          : c.input === MKB ? 'Mouse & keyboard' : pad ? padName(pad) : 'Controller disconnected';
       card.querySelector('.race .val').textContent = race.name;
       card.querySelector('.race .val').style.color = race.color;
       card.querySelector('.race .desc').textContent = ownRace ? race.desc : 'Picked by your army’s first player.';
@@ -538,17 +545,18 @@
       const withHero = picksHero(c.side);
       card.querySelector('.hero').hidden = !withHero;
       card.querySelector('.info').hidden = !withHero;
-      card.querySelector('.readyBtn').hidden = !local;
+      card.querySelector('.readyBtn').hidden = !local || c.bot;
       const diffRow = card.querySelector('.diff');
       if (diffRow) {
-        const d = G.DIFFICULTIES[cpuDiff];
-        diffRow.hidden = !single;
+        const difficulty = c.bot ? c.pk.difficulty : cpuDiff;
+        const d = G.DIFFICULTIES[difficulty];
+        diffRow.hidden = !(single && c.side === 'east') && !(local && c.bot);
         diffRow.querySelector('.val').textContent = d.name;
         diffRow.querySelector('.val').classList.toggle('griefs', d.id === 'griefs');
         diffRow.querySelector('.desc').textContent = d.desc;
-        diffRow.querySelector('.prev').disabled = cpuDiff === 0;
-        diffRow.querySelector('.next').disabled = cpuDiff === G.DIFFICULTIES.length - 1;
-        diffRow.classList.toggle('active', single && focusSide === c.key && pk.row === 2);
+        diffRow.querySelector('.prev').disabled = difficulty === 0;
+        diffRow.querySelector('.next').disabled = difficulty === G.DIFFICULTIES.length - 1;
+        diffRow.classList.toggle('active', (single && c.side === 'east' && focusSide === c.key || local && c.bot && focused) && pk.row === 2);
       }
       if (withHero) {
         card.querySelector('.hero .val').textContent = hero.name;
@@ -563,9 +571,9 @@
           `<li${a.ult ? ' class="ult"' : ''}><b>${a.key.toUpperCase()}</b> ${a.icon} ${a.name}${i === 2 ? ` <i>+ ${hero.passive.name}</i>` : ''}</li>`).join('');
       }
       // Single player highlights only the row a controller is on; the other modes, each card's own.
-      const focused = !pk.ready && (!single || focusSide === c.key);
       card.querySelector('.race').classList.toggle('active', focused && pk.row === 0);
       card.querySelector('.hero').classList.toggle('active', focused && pk.row === 1);
+      if (diffRow) diffRow.classList.toggle('active', focused && pk.row === 2);
       card.classList.toggle('ready', pk.ready);
       card.querySelector('.readyBtn').textContent = pk.ready ? 'Ready ✓' : 'Lock in';
       preview.set(c.key, card.querySelector('.preview'), race.id, withHero ? hero.id : null, c.side === 'west' ? G.TEAM.PLAYER : G.TEAM.ENEMY);
@@ -712,7 +720,10 @@
         hero: G.HEROES[picks[s.key].hero].id
       })),
       // Local multiplayer: each player's army, controller (a pad index or 'mkb') and hero, west first.
-      players: selectMode === 'local' ? cards().map(c => ({ side: c.side, gamepad: c.input, hero: G.HEROES[c.pk.hero].id })) : undefined
+      players: selectMode === 'local' ? cards().map(c => ({
+        side: c.side, bot: !!c.bot, gamepad: c.input, hero: G.HEROES[c.pk.hero].id,
+        difficulty: c.bot ? G.DIFFICULTIES[c.pk.difficulty].id : undefined
+      })) : undefined
     };
     G.saveMapId(G.matchConfig.map);
     // Remembered so "Play again" (which reloads) restarts the same match-up.
@@ -942,10 +953,17 @@
         }
         renderLocal();
       });
+      col.querySelector('.seats').addEventListener('click', e => {
+        const button = e.target.closest('button[data-bot]');
+        if (!button) return;
+        bots = bots.filter(b => String(b.id) !== button.dataset.bot);
+        renderLocal();
+      });
       col.querySelector('.add').addEventListener('change', e => {
         if (e.target.value !== '') joinSeat(inputValue(e.target.value), s.key);
         renderLocal();
       });
+      col.querySelector('.addBot').addEventListener('click', () => { addBot(s.key); renderLocal(); });
       wireCard(root.querySelector(`.pick[data-key="${s.key}"]`), s.key);
     }
     window.addEventListener('gamepadconnected', () => { if (screen === 'local') renderLocal(); });

@@ -1,8 +1,8 @@
 // Boot: build the world, wire input to the hero, run the loop.
 (function (G) {
   // Starts the match in G.matchConfig (set by the menu). mode 'single': the player against a CPU hero
-  // (see ai.js) at cfg.difficulty. mode 'local': two to four players on one screen (cfg.players, up to three
-  // an army), each hero driven by its player's controller (or the mouse and keyboard, for one of them). mode 'nethost' / 'netclient': a networked 3 vs 3 (see net.js); the
+  // (see ai.js) at cfg.difficulty. mode 'local': human players and bots share up to three heroes per army;
+  // only human players get a split-screen view. mode 'nethost' / 'netclient': a networked 3 vs 3 (see net.js); the
   // host simulates every hero, a client only mirrors the host's world and sends its player's commands.
   // Anything else is the sandbox: the hero vs. training dummies and a static enemy barracks.
   //
@@ -18,7 +18,7 @@
     const single = cfg.mode === 'single', local = cfg.mode === 'local';
     const netHost = cfg.mode === 'nethost', netClient = cfg.mode === 'netclient', net = netHost || netClient;
     const west = (cfg.sides || [])[0] || {}, east = (cfg.sides || [])[1] || {};
-    // Local multiplayer's players (a match saved before four-player split screen named one a side).
+    // Local multiplayer roster; older saved matches contain only human players.
     const roster = !local ? [] : cfg.players || [['west', west], ['east', east]].map(([side, s]) => ({ side, gamepad: s.gamepad, hero: s.hero }));
     G.teamRace[G.TEAM.PLAYER] = net ? cfg.races[0] : west.race || 'human';
     G.teamRace[G.TEAM.ENEMY] = net ? cfg.races[1] : east.race || 'algox';
@@ -47,7 +47,7 @@
     // Network games and local multiplayer: up to three heroes a side, at the map's spawn points (Frosthaven:
     // one by each rear base, middle, then top, then bottom). A network host makes them all; a client gets them (and the rest of the world) from
     // the host's first snapshot.
-    let hero = null, localHeroes = [];
+    let hero = null, localHeroes = [], localBots = [];
     const respawns = [];
     if (netHost) {
       const heroById = {}, perTeam = [0, 0];
@@ -66,16 +66,32 @@
       hero = G.net.clientBegin(cfg);
     } else if (local) {
       const perTeam = [0, 0];
-      localHeroes = roster.map(r => {
+      const teamDifficulty = [null, null];
+      for (const r of roster) {
+        if (!r.bot) continue;
+        const team = r.side === 'east' ? G.TEAM.ENEMY : G.TEAM.PLAYER;
+        const difficulty = G.difficultyById(r.difficulty);
+        const rank = G.DIFFICULTIES.indexOf(difficulty);
+        if (!teamDifficulty[team] || rank > teamDifficulty[team].rank) teamDifficulty[team] = { difficulty, rank };
+      }
+      // Teamwide troop and gold bonuses use the strongest bot difficulty on that side.
+      teamDifficulty.forEach((entry, team) => {
+        if (entry) G.teamBonus[team] = { troopDmg: entry.difficulty.troopDmg, gold: entry.difficulty.gold };
+      });
+      for (const r of roster) {
         const team = r.side === 'east' ? G.TEAM.ENEMY : G.TEAM.PLAYER;
         const at = netSpawn(team, perTeam[team]++ % 3);
         const h = new G.Hero(at.x, at.y, G.heroById(r.hero || (team === G.TEAM.ENEMY ? 'deathwalker' : 'bannerspear')), team);
         if (team === G.TEAM.ENEMY) h.facing = Math.PI;
         G.entities.push(h);
         respawns.push({ h, at, t: 0 });
-        return h;
-      });
-      hero = localHeroes[0];
+        if (r.bot) {
+          const cpu = G.createAI();
+          cpu.start(h, r.difficulty, at, false);
+          localBots.push(cpu);
+        } else localHeroes.push(h);
+      }
+      hero = localHeroes[0] || localBots[0].hero;
     } else {
       hero = new G.Hero(HERO_SPAWN.x, HERO_SPAWN.y, heroDef);
       G.entities.push(hero, ...DUMMY_SPOTS.map(p => new G.AlgoxDummy(p.x, p.y)));
@@ -107,7 +123,7 @@
 
     // Split-screen labels: the army, numbered when it has more than one player ("West 2").
     const localLabel = r => {
-      const army = roster.filter(o => o.side === r.side);
+      const army = roster.filter(o => o.side === r.side && !o.bot);
       return (r.side === 'east' ? 'East' : 'West') + (army.length > 1 ? ' ' + (army.indexOf(r) + 1) : '');
     };
     const players = local
@@ -221,6 +237,7 @@
       if (!paused) playerInput();
       if (netHost) G.net.hostCommands();
       if (single) G.ai.update(dt);
+      for (const cpu of localBots) cpu.update(dt);
 
       for (const e of G.entities) e.update(dt);
       G.updateCreatures();
@@ -385,9 +402,10 @@
     function nearestSlot(hero) {
       const base = G.baseAt(hero.x, hero.y);
       if (!base) return null;
+      const wallSlot = G.wallBuildSlot(base);
       let best = null, bd = G.SLOT_R + hero.r + 60;
       for (const slot of base.slots) {
-        if (slot.core || slot.wall) continue;
+        if (slot.core || slot.wall || wallSlot === slot) continue;
         const dd = G.dist(hero.x, hero.y, slot.x, slot.y);
         if (dd < bd) { bd = dd; best = { base, slot }; }
       }

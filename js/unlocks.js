@@ -14,7 +14,7 @@
     r: { need: 1, text: 'Destroy an enemy building', progress: u => u.razed }
   };
 
-  G.newUnlocks = () => ({ kills: 0, heroDmg: 0, bases: 0, slots: 0, razed: 0, done: {} });
+  G.newUnlocks = () => ({ kills: 0, heroDmg: 0, bases: 0, slots: 0, razed: 0, done: {}, buildings: {} });
 
   // key: an ability key ('q' 'w' 'e' 'r') or 'passive'.
   G.isUnlocked = (h, key) => G.dev || !!(h.unlock && h.unlock.done[key]);
@@ -53,7 +53,7 @@
     for (const b of G.bases) {
       if (b.team !== team) continue;
       if (b !== home) mine.add(b.id);
-      slots = Math.max(slots, b.slots.filter(s => !s.core && !s.wall && s.building).length);
+      slots = Math.max(slots, b.slots.filter(s => !s.core && !s.wall && s.building).length + (G.wallBuildSlot(b) ? 1 : 0));
     }
     return { bases: mine.size, slots, razed: razed[team] ? 1 : 0 };
   }

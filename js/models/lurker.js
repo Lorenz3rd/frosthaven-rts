@@ -74,23 +74,6 @@
 
   const B = {};
 
-  // Tide Shell: a giant spiral conch turned into a dwelling, a pearl lamp at its mouth.
-  B.hut = (slot, base, team) => {
-    const gr = new THREE.Group();
-    add(gr, g.cyl(72, 78, 6, 14), K.m(C.sand), 0, 3, 0);
-    // The conch lies on its side, spire pointing away and its mouth (the door) toward the base center.
-    const shell = conch(gr, 30, 52, 0, 40, 0xd8b088);
-    shell.rotation.z = PI / 2;
-    add(gr, g.disc(36, 24), K.m(0x140c08, { side: THREE.DoubleSide }), 32, 52, 0, { rz: PI / 2, shadow: false });
-    add(gr, g.torus(42, 7, 6, 18), K.m(0xffc8a8), 34, 52, 0, { ry: PI / 2 });
-    const lamp = add(gr, g.sph(6, 10, 8), pearlM(), 50, 44, 18);
-    K.addGlow(gr, C.glow, 50, 50, 44, 18, 0.7);
-    coral(gr, 40, -46, 50, C.coral, 1); coral(gr, -50, 40, 40, C.coralB, 2);
-    kelp(gr, -40, -40, 50);
-    shellBanner(gr, team, -30, -60, 100);
-    return K.placeInSlot(gr, slot, base);
-  };
-
   // Reef Trench: a ring of coral and rock around a brine pit, urchin launchers peeking over.
   B.digin = (slot, base, team) => {
     const gr = new THREE.Group();

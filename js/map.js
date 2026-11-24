@@ -61,8 +61,9 @@
       });
     }
 
+    //"rocks" become houses, carts, and barrles based on their size
     let tries = 0;
-    while (map.rocks.length < 115 && tries++ < 6000) {
+    while (map.rocks.length < 15 && tries++ < 6000) {
       const r = 22 + rand() * 50;
       const x = r + rand() * (map.w - 2 * r);
       const y = r + rand() * (map.h - 2 * r);
@@ -75,7 +76,7 @@
 
     // Trees: solid trunks, generated after rocks so rock layout is unchanged.
     tries = 0;
-    while (map.trees.length < 90 && tries++ < 6000) {
+    while (map.trees.length < 15 && tries++ < 6000) {
       const x = 40 + rand() * (map.w - 80), y = 40 + rand() * (map.h - 80);
       const clashes =
         Math.abs(x - map.w / 2) < 160 ||
@@ -205,7 +206,7 @@
 
     // Boulders: fewer than the village has rocks, in clusters of one to three.
     let tries = 0;
-    while (map.rocks.length < 70 && tries++ < 6000) {
+    while (map.rocks.length < 20 && tries++ < 6000) {
       const r = 26 + rand() * 54;
       const x = r + rand() * (map.w - 2 * r), y = r + rand() * (map.h - 2 * r);
       const clashes = sh.edge(x, y) < r + 60 || nearChasm(x, y, r + 140) ||
@@ -217,7 +218,7 @@
 
     // Stunted pines, mostly toward the cliffs.
     tries = 0;
-    while (map.trees.length < 45 && tries++ < 6000) {
+    while (map.trees.length < 15 && tries++ < 6000) {
       const x = 40 + rand() * (map.w - 80), y = 40 + rand() * (map.h - 80), e = sh.edge(x, y);
       const clashes = e < 50 || e > 900 || nearChasm(x, y, 90) ||
         keepClear.some(c => G.dist(x, y, c.x, c.y) < c.r + 60) ||
@@ -383,7 +384,7 @@
 
     // Weathered boulders, thickest toward the cliffs.
     let tries = 0;
-    while (map.rocks.length < 80 && tries++ < 8000) {
+    while (map.rocks.length < 20 && tries++ < 8000) {
       const r = 24 + rand() * 50;
       const x = r + rand() * (map.w - 2 * r), y = r + rand() * (map.h - 2 * r), e = shore(x, y);
       const clashes = e < r + 70 || (e > 1200 && rand() < 0.6) || byBridge(x, y, r + 60) ||
@@ -395,7 +396,7 @@
 
     // Wind-bent pines, in stands away from the cliff tops.
     tries = 0;
-    while (map.trees.length < 70 && tries++ < 8000) {
+    while (map.trees.length < 15 && tries++ < 8000) {
       const x = 40 + rand() * (map.w - 80), y = 40 + rand() * (map.h - 80);
       const clashes = shore(x, y) < 140 || byBridge(x, y, 80) ||
         (map.trees.length && rand() < 0.75 && !map.trees.some(t => G.dist(x, y, t.x, t.y) < 260)) ||
@@ -659,7 +660,7 @@
     // Warehouses, woodpiles and stacked cargo (drawn as the village's buildings, see render3d), kept off the
     // quay round the basin so the way round it stays open.
     let tries = 0;
-    while (map.rocks.length < 80 && tries++ < 8000) {
+    while (map.rocks.length < 25 && tries++ < 8000) {
       const r = 24 + rand() * 50;
       const x = r + rand() * (map.w - 2 * r), y = r + rand() * (map.h - 2 * r);
       const clashes = shore(x, y) < r + 90 || rho(x, y) < hb.RM + 450 || inWay(x, y, r) ||
@@ -671,7 +672,7 @@
 
     // A few stands of pines toward the map's edges.
     tries = 0;
-    while (map.trees.length < 40 && tries++ < 8000) {
+    while (map.trees.length < 15 && tries++ < 8000) {
       const x = 40 + rand() * (map.w - 80), y = 40 + rand() * (map.h - 80);
       const clashes = shore(x, y) < 140 || rho(x, y) < hb.RB - 200 || inWay(x, y, 40) ||
         (map.trees.length && rand() < 0.7 && !map.trees.some(t => G.dist(x, y, t.x, t.y) < 240)) ||
@@ -769,6 +770,17 @@
     }
     return near;
   }
+  function solidsAlong(ax, ay, bx, by, pad) {
+    const dx = bx - ax, dy = by - ay, length = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.ceil(length / CELL));
+    const solids = [], seen = new Set();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      for (const k of solidsNear(ax + dx * t, ay + dy * t, pad + CELL / 2))
+        if (!seen.has(k)) { seen.add(k); solids.push(k); }
+    }
+    return { solids, seen };
+  }
 
   // Wall posts: a gate post stops everyone but its own side. overWalls: shots fly over walls entirely,
   // and over crevasses (nobody walks over those, burrowers included).
@@ -819,6 +831,60 @@
     }
     return best;
   };
+  // Rocks, trees, and buildings are round obstacles too. Give walkers a clear waypoint around the
+  // first one in their path; wallSteer / gapSteer handle walls and crevasses separately.
+  map.solidSteer = function (e, tx, ty) {
+    const dx = tx - e.x, dy = ty - e.y, length = Math.hypot(dx, dy);
+    if (length < 1) return null;
+    const ux = dx / length, uy = dy / length, r = e.r || 0;
+    const path = solidsAlong(e.x, e.y, tx, ty, r);
+    const candidates = path.solids;
+    let hit = null, hitAlong = Infinity;
+    for (const k of candidates) {
+      if (k.wall || k.gap || passes(k, e.team, e.burrowed)) continue;
+      const clear = k.cr + r + 8;
+      if (G.dist(k.x, k.y, tx, ty) < clear) continue;
+      const along = (k.x - e.x) * ux + (k.y - e.y) * uy;
+      if (along <= 0 || along >= length || along >= hitAlong) continue;
+      const side = (k.y - e.y) * ux - (k.x - e.x) * uy;
+      if (Math.abs(side) >= clear) continue;
+      hit = { k, along, side, clear };
+      hitAlong = along;
+    }
+    if (!hit) return null;
+
+    for (const k of solidsNear(hit.k.x, hit.k.y, 3 * hit.clear + 80))
+      if (!path.seen.has(k)) { path.seen.add(k); candidates.push(k); }
+
+    const nx = -uy, ny = ux, preferred = hit.side > 0 ? -1 : 1;
+    let best = null, bestCost = Infinity;
+    for (const side of [preferred, -preferred]) {
+      for (const along of [hit.clear, hit.clear * 1.5, hit.clear * 2]) {
+        for (const offset of [hit.clear + 12, hit.clear + 36, hit.clear + 72]) {
+          const wx = hit.k.x + ux * along + nx * offset * side;
+          const wy = hit.k.y + uy * along + ny * offset * side;
+          if (map.blocked(wx, wy, r, e.team)) continue;
+          if (segmentBlocked(candidates, e.x, e.y, wx, wy, r, e.team, e.burrowed) ||
+              segmentBlocked(candidates, wx, wy, tx, ty, r, e.team, e.burrowed)) continue;
+          const cost = G.dist(e.x, e.y, wx, wy) + G.dist(wx, wy, tx, ty) + (side === preferred ? 0 : 1);
+          if (cost < bestCost) { best = { x: wx, y: wy }; bestCost = cost; }
+        }
+      }
+    }
+    return best;
+  };
+  function segmentBlocked(candidates, ax, ay, bx, by, r, team, overWalls) {
+    const dx = bx - ax, dy = by - ay, lengthSq = dx * dx + dy * dy || 1;
+    for (const k of candidates) {
+      if (k.wall || k.gap || passes(k, team, overWalls)) continue;
+      const endX = k.x - bx, endY = k.y - by, endReach = r + k.cr + 8;
+      if (endX * endX + endY * endY < endReach * endReach) continue;
+      const t = G.clamp(((k.x - ax) * dx + (k.y - ay) * dy) / lengthSq, 0, 1);
+      const nearX = ax + dx * t - k.x, nearY = ay + dy * t - k.y, reach = r + k.cr + 4;
+      if (nearX * nearX + nearY * nearY < reach * reach) return true;
+    }
+    return false;
+  }
   // Fraction along p->q where it crosses segment a->b, or null if it doesn't.
   function crossAt(px, py, qx, qy, ax, ay, bx, by) {
     const rx = qx - px, ry = qy - py, sx = bx - ax, sy = by - ay;

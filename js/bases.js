@@ -22,10 +22,9 @@
 
   // Building catalog. Add new building types here.
   G.BUILDINGS = {
-    // `cost`: gold to build, set by value: hut (no effect yet) < dig-in < barracks < support/allies < storm/siege.
+    // `cost`: gold to build, set by value: dig-in < barracks < support/allies < storm/siege.
     // Destroyed buildings drop G.BUILDING_SALVAGE of it as coins (see economy.js). The Command Center is free.
     // No gameplay effects yet: these only differ in name and model.
-    hut: { name: 'Hut', cost: 50, r: 26 * SCALE },
     // Defense: `weapon` (or `weapons`, several firing on their own) makes the building shoot (see towers.js).
     //   range/minRange: center-to-target distance. targets: 'units', 'buildings' or 'all' (units + buildings).
     //   pick: 'nearest', 'buildings' (buildings first, else the nearest) or 'maxHp' (highest max health).
@@ -41,8 +40,7 @@
       weapon: Object.assign({}, DIGIN_WEAPON, { range: G.m(15), cooldown: 1.5, damage: 200, muzzle: 230 }) },
     support: { name: 'Support-Tower', cost: 150, r: 22 * SCALE, weapon: SUPPORT_WEAPON },
     siege: { name: 'Siege', cost: 300, r: 26 * SCALE, weapon: SIEGE_WEAPON },
-    // Wall: built from any slot, it rings the whole base without taking the slot. Each of its `segments`
-    // is a building of its own (type wallSegment) that foes target and break separately.
+    // Wall: takes one build slot and rings the base. Each `wallSegment` is a building foes can break separately.
     wall: { name: 'Wall', cost: 250, wall: true, segments: SLOT_COUNT },
     wallSegment: { name: 'Wall', cost: 250 / SLOT_COUNT, r: 30, hp: 750, segment: true, menu: false },
     energy: { name: 'Energy Weapon', cost: 300, r: 22 * SCALE,
@@ -143,13 +141,19 @@
     return null;
   };
 
+  G.wallBuildSlot = function (base) {
+    const segment = base.walls.find(w => w.building && Number.isInteger(w.building.wallSlot));
+    const slot = segment && base.slots[segment.building.wallSlot];
+    return slot && !slot.wall && !slot.core ? slot : null;
+  };
+
   // Returns null on success, or a reason string the caller can show.
   // team: who the building is for (defaults to the hero's side; the test menu can build for the enemy).
   G.buildCheck = function (hero, base, slot, team = hero.team, type = null) {
     if (base.team !== null && base.team !== team) return team === hero.team ? 'Enemy base' : 'Not an enemy base';
     const race = type && G.BUILDINGS[type].race;
     if (race && race !== G.raceOf(team)) return 'Another race builds that';
-    if (slot.building) return 'Slot occupied';
+    if (slot.building || G.wallBuildSlot(base) === slot) return 'Slot occupied';
     if (G.dist(hero.x, hero.y, base.x, base.y) > base.r) return 'Hero must be in the base';
     // The hero may stand on the slot; placeBuilding() steps them off it.
     return null;
@@ -179,6 +183,7 @@
     if (reason) { refuse(hit.slot, reason); return false; }
     G.addBuilding(hit.base, hit.slot, type, team);
     if (team === hero.team && !G.dev) hero.gold -= def.cost;  // TESTING: enemy buildings from the test menu are free
+    G.noteStructureBuilt(hero, type, team);
     // If the hero is standing where the building goes, push them out to its edge.
     const dx = hero.x - hit.slot.x, dy = hero.y - hit.slot.y;
     const d = Math.hypot(dx, dy);
@@ -192,20 +197,35 @@
     return true;
   };
 
-  // The wall goes up around the whole base the slot is in: every missing segment at once, for its share
-  // of the cost (a full wall the first time, only the broken pieces after that). The slot stays free.
+  // The wall goes up around the whole base: every missing segment at once, for its share of the cost.
+  // The first wall segment records which build slot the wall occupies.
   G.buildWall = function (hero, hit, team = hero.team) {
     const def = G.BUILDINGS.wall, base = hit.base;
     const missing = base.walls.filter(w => !w.building);
     const price = Math.round(def.cost * missing.length / def.segments);
+    const wallSlot = G.wallBuildSlot(base);
+    const anchorSlot = hit.slot;
     let reason = null;
     if (base.team !== null && base.team !== team) reason = team === hero.team ? 'Enemy base' : 'Not an enemy base';
+    else if (!hit.slot || hit.slot.wall || hit.slot.core || !base.slots.includes(hit.slot) || hit.slot.building || hit.slot === wallSlot) reason = 'Slot occupied';
     else if (G.dist(hero.x, hero.y, base.x, base.y) > base.r) reason = 'Hero must be in the base';
     else if (!missing.length) reason = 'Already walled';
     else if (team === hero.team && !G.dev && hero.gold < price) reason = 'Not enough gold';
-    if (reason) { refuse(hit.slot, reason); return false; }
-    for (const w of missing) { G.addBuilding(base, w, 'wallSegment', team); G.burst(w.x, w.y, '#ffffff', 12, 120); }
+    if (reason) { if (hit.slot) refuse(hit.slot, reason); return false; }
+    const wallSlotIndex = base.slots.indexOf(anchorSlot);
+    for (const w of base.walls) if (w.building) w.building.wallSlot = wallSlotIndex;
+    for (const w of missing) {
+      G.addBuilding(base, w, 'wallSegment', team).wallSlot = wallSlotIndex;
+      G.burst(w.x, w.y, '#ffffff', 12, 120);
+    }
     if (team === hero.team && !G.dev) hero.gold -= price;
+    G.noteStructureBuilt(hero, 'wall', team);
+    const dx = hero.x - anchorSlot.x, dy = hero.y - anchorSlot.y, d = Math.hypot(dx, dy), reach = SLOT_R + hero.r + 2;
+    if (d < reach) {
+      const ux = d > 0.001 ? dx / d : 0, uy = d > 0.001 ? dy / d : -1;
+      hero.x = anchorSlot.x + ux * reach;
+      hero.y = anchorSlot.y + uy * reach;
+    }
     G.map.resolve(hero);  // off the wall line, if the hero stood on it
     return true;
   };
@@ -359,14 +379,16 @@
     return { x: gx, y: gy };
   }
 
-  // Where a walker `e` ({ x, y, r, team }) heading for (tx, ty) should actually head, given the walls
-  // in the way. Returns null for a clear path, { x, y } for a waypoint, or { wall } when an unbroken
-  // wall of another side shuts it out: then it has to break that segment first.
+  // Where a walker `e` ({ x, y, r, team }) heading for (tx, ty) should actually head, around walls,
+  // crevasses, and solid objects. Returns null for a clear path, { x, y } for a waypoint, or { wall }
+  // when an unbroken wall of another side shuts it out: then it has to break that segment first.
   // A destination on the wall line itself (a wall segment) can be walked straight up to.
   // Crevasses in the way come first: the walker heads round the end of one (G.map.gapSteer), minding walls.
   G.steer = function (e, tx, ty) {
     const g = G.map.gapSteer(e, tx, ty);
-    return g ? wallSteer(e, g.x, g.y) || g : wallSteer(e, tx, ty);
+    const route = g ? wallSteer(e, g.x, g.y) || g : wallSteer(e, tx, ty);
+    if (route && route.wall) return route;
+    return G.map.solidSteer(e, route ? route.x : tx, route ? route.y : ty) || route;
   };
   function wallSteer(e, tx, ty) {
     const list = walledBases();

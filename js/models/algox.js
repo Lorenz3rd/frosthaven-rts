@@ -52,25 +52,6 @@
   // ---------------------------------------------------------------------------------------------
   const B = {};
 
-  // Hide Yurt: a hide dome stretched over arched mammoth ribs, smoke-hole glow, a door flap.
-  B.hut = (slot, base, team) => {
-    const gr = new THREE.Group();
-    snowMound(gr, 0, 0, 80, 10);
-    add(gr, g.dome(62, 16, 8), K.m(C.hide), 0, 6, 0, { sy: 1.1 });
-    add(gr, g.dome(40, 12, 6), K.m(C.hideLight), 0, 50, 0, { sy: 0.5 });
-    for (let i = 0; i < 8; i++) {
-      const a = i / 8 * PI * 2;
-      add(gr, new THREE.TorusGeometry(56, 3, 5, 12, PI * 0.42), K.m(C.bone), Math.cos(a) * 8, 8, Math.sin(a) * 8, { ry: -a, rz: PI * 0.08 });
-    }
-    add(gr, g.cyl(10, 12, 8, 8), K.m(C.hideDark), 0, 72, 0);
-    K.addGlow(gr, 0xff9a40, 60, 0, 82, 0, 0.6);
-    add(gr, g.box(4, 40, 30), K.m(C.hideDark), 61, 22, 0, { rz: -0.15 });
-    tusk(gr, 62, 50, 22, 26, PI * 0.7, 0); tusk(gr, 62, 50, -22, 26, PI * 0.7, PI);
-    K.addGlow(gr, 0xff8a30, 50, 66, 20, 0, 0.5);
-    hideBanner(gr, team, -40, 0, -50, 90);
-    return K.placeInSlot(gr, slot, base);
-  };
-
   // Snow Burrow: a snow mound ringed with ice blocks, javelins planted around, hunters peeking out.
   B.digin = (slot, base, team) => {
     const gr = new THREE.Group();

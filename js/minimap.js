@@ -1,7 +1,7 @@
 // Minimap (bottom right; bottom center in split screen): terrain, base ownership, units and each player's view.
 // Right-click orders the hero to move there (one-player games only).
 (function (G) {
-  const WIDTH = 280;                       // CSS pixels
+  const WIDTH = 224;                       // CSS pixels
   const TEAM_CSS = { [G.TEAM.PLAYER]: '63,116,184', [G.TEAM.ENEMY]: '178,46,36' };
   const NEUTRAL_CSS = '120,116,108';
 
@@ -125,8 +125,9 @@
         ctx.strokeStyle = `rgb(${c})`;
         ctx.lineWidth = b.team === null ? 1.5 : 2.5;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        const wallSlot = G.wallBuildSlot(b);
         for (const s of b.slots) {
-          if (!s.building || s.wall) continue;
+          if ((!s.building && s !== wallSlot) || s.wall) continue;
           const q = toMap(s.x, s.y), k = s.core ? 3.5 : 1.5;  // Command Center: a bigger, gold mark
           ctx.fillStyle = s.core ? '#ffd27a' : '#e9dcc2';
           ctx.fillRect(q.x - k, q.y - k, k * 2, k * 2);

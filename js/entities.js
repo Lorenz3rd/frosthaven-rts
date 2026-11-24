@@ -5,7 +5,7 @@
   G.particles = [];
   G.floaters = [];
   G.deathListeners = [];   // fn(entity) called whenever an entity dies
-  const POISON_HERO = 10, POISON_UNIT = 2;   // extra damage per hit on a poisoned target
+  const POISON_HERO = 20, POISON_UNIT = 4;   // extra damage per hit on a poisoned target
 
   // Ranged attacks (shots, projectiles, beams, waves) land inside G.asRanged, so a Stormspeaker's
   // storm shield can stop the damage they deal (see G.soakRanged in squads.js).
@@ -128,7 +128,7 @@
     constructor(x, y, def, team = G.TEAM.PLAYER) {
       super(x, y, def.r || 18, def.hp, team);
       this.def = def;
-      this.speed = def.speed * 1.3;   // all heroes move 30% faster than their listed base speed
+      this.speed = def.speed;
       this.hpRegen = def.hpRegen || 5;
       this.target = null;
       this.facing = 0;

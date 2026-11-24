@@ -142,7 +142,7 @@ body.daylight #grain { opacity: 0.3; }
   position: fixed;
   right: 14px;
   bottom: 14px;
-  padding: 6px;
+  padding: 5px;
   background: linear-gradient(180deg, #221c16, var(--frame));
   border: 2px solid var(--bronze);
   outline: 1px solid #000;
@@ -153,8 +153,8 @@ body.daylight #grain { opacity: 0.3; }
 #minimapCounts {
   display: flex;
   justify-content: space-between;
-  margin-top: 5px;
-  font-size: 11px;
+  margin-top: 4px;
+  font-size: 9px;
   font-weight: 700;
   text-shadow: 0 1px 2px #000;
 }
@@ -325,6 +325,9 @@ body.in-menu > :not(#menu):not(script) { display: none !important; }
 #menu .side .seats .pad { font-size: 26px; width: 34px; text-align: center; }
 #menu .side .seats .open .pad { opacity: 0.3; filter: grayscale(1); }
 #menu .side .seats select { flex: 1; width: auto; min-width: 0; }
+#menu .side .botSeat .status { flex: 1; text-align: left; }
+#menu .side .botSeat button { padding: 4px 10px; font-size: 15px; }
+#menu .side .addBot { width: 100%; padding: 8px; font-size: 13px; }
 #menu .side .add[hidden] { display: none; }
 #menu .side.joined.you, #menu .pick.ready.you { border-color: #7fb0e0; box-shadow: 0 0 16px rgba(127, 176, 224, 0.35); }
 #menu .side.joined.enemy, #menu .pick.ready.enemy { border-color: #e0624f; box-shadow: 0 0 16px rgba(224, 98, 79, 0.35); }
@@ -506,7 +509,7 @@ body.dev-mode #devBadge { display: block; }
 
 /* ---- Selection cards: preview + hero info ---- */
 #menu .pick [hidden], #menu .pick[hidden] { display: none !important; }
-/* Three or four players: narrower cards with shorter previews. */
+/* Multiple local players and bots: narrower cards with shorter previews. */
 #menu .screen[data-screen="select"]:has(.sides.many) { width: min(1400px, 100%); }
 #menu .sides.many .pick { max-width: 320px; padding: 14px; }
 #menu .sides.many .pick .k { display: none; }

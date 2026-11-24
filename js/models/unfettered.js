@@ -53,23 +53,6 @@
 
   const B = {};
 
-  // Power Cell: a giant battery with glowing charge bands, cabled to the ground.
-  B.hut = (slot, base, team) => {
-    const gr = new THREE.Group();
-    add(gr, g.cyl(66, 72, 10, 12), plate(), 0, 5, 0);
-    add(gr, g.cyl(42, 42, 110, 16), darkM(), 0, 65, 0);
-    const bands = [];
-    for (let i = 0; i < 4; i++) bands.push(add(gr, g.cyl(43, 43, 8, 16), core(), 0, 26 + i * 24, 0, { shadow: false }));
-    add(gr, g.cyl(44, 44, 8, 16), brass(), 0, 124, 0);
-    add(gr, g.cyl(14, 14, 14, 10), brass(), 0, 134, 0);
-    add(gr, g.cyl(8, 8, 6, 10), K.lit(K.teamGlow(team)), 0, 144, 0, { shadow: false });
-    for (let i = 0; i < 4; i++) { const a = i / 4 * PI * 2 + 0.4; pipe(gr, Math.cos(a) * 40, 30, Math.sin(a) * 40, Math.cos(a) * 64, 4, Math.sin(a) * 64, 3.5, darkM()); }
-    panel(gr, team, 43, 70, 0, 30, 40);
-    const glow = K.addGlow(gr, C.glow, 120, 0, 70, 0, 0.35);
-    gr.userData = { tick(b, time) { bands.forEach((m, i) => { m.visible = (Math.floor(time * 2) % 5) >= i; }); glow.material.opacity = 0.3 + Math.sin(time * 3) * 0.08; } };
-    return K.placeInSlot(gr, slot, base);
-  };
-
   // Sentry Nest: a riveted bunker ring with twin gun turrets.
   B.digin = (slot, base, team) => {
     const gr = new THREE.Group();

@@ -16,24 +16,26 @@
       <h1>Frosthaven <span>RTS</span></h1>
       <nav class="options">
         <button type="button" data-go="single">Single Player</button>
-        <button type="button" data-go="local">Local Multiplayer<small>Split screen · up to 4 players</small></button>
+        <button type="button" data-go="local">Local Multiplayer<small>Split screen · players and bots</small></button>
         <button type="button" data-go="net">Network Multiplayer<small>Wi-Fi or internet · up to 3 vs 3</small></button>
         <button type="button" data-go="dev">Developer</button>
       </nav>
     </div>
     <div class="screen" data-screen="local" hidden>
       <h2>Local Multiplayer</h2>
-      <p class="hint">Up to four players, one screen. Each player presses Ⓐ on their Xbox controller to join (or Enter to play with mouse &amp; keyboard). ◀ ▶ to change army, Ⓑ to leave.</p>
+      <p class="hint">Up to three heroes per army. Join with Ⓐ (or Enter for mouse &amp; keyboard), then add bots as needed. Bots do not use a screen view.</p>
       <div class="sides">
         <div class="side you" data-side="west">
           <div class="label">West Army</div>
           <ul class="seats"></ul>
+          <button type="button" class="addBot">＋ Add bot</button>
           <select class="add" aria-label="Add a West Army player"></select>
         </div>
         <div class="vs">VS</div>
         <div class="side enemy" data-side="east">
           <div class="label">East Army</div>
           <ul class="seats"></ul>
+          <button type="button" class="addBot">＋ Add bot</button>
           <select class="add" aria-label="Add an East Army player"></select>
         </div>
       </div>
@@ -51,6 +53,7 @@
           <canvas class="preview" aria-label="West Army preview"></canvas>
           <div class="row race"><span class="k">Race</span><button type="button" class="prev" aria-label="Previous race">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next race">›</button></div>
           <div class="row hero"><span class="k">Hero</span><button type="button" class="prev" aria-label="Previous hero">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Next hero">›</button></div>
+          <div class="row diff" hidden><span class="k">CPU</span><button type="button" class="prev" aria-label="Easier">‹</button><div class="mid"><div class="val"></div><div class="desc"></div></div><button type="button" class="next" aria-label="Harder">›</button></div>
           <div class="info"><div class="stats"></div><ul class="abil"></ul></div>
           <button type="button" class="readyBtn">Lock in</button>
         </div>

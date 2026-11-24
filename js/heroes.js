@@ -68,7 +68,7 @@
     id: 'bannerspear', name: 'Bannerspear', lore: 'Human', role: 'Melee',
     color: 0xe8c060, css: '#e8c060', r: 19, barH: 115,
     desc: 'A shield-and-spear tactician who fights at the head of the line, plants war banners and never goes anywhere without her squire Charlie.',
-    hp: 1500, speed: 172,
+    hp: 1500, speed: 225,
     basic: { damage: 75, range: 46, cooldown: 1.05, impact: 0.14 },
     passive: { name: 'Charlie', icon: '⛨', desc: `Charlie, her squire (200 HP, no attack), keeps pace about 3 m away and always steps between her and the nearest enemy. He heals 1 HP per second and returns ${CHARLIE_RESPAWN}s after falling.` },
     init(h) { h.state.charlie = null; h.state.charlieT = 0; },
@@ -85,30 +85,30 @@
     passiveText: h => (h.state.charlie || !G.passiveOn(h) ? '' : Math.ceil(Math.max(0, h.state.charlieT)) + 's'),
     abilities: [
       { key: 'q', name: 'Banner of Doom', icon: '☠', cooldown: 8, range: BANNER_REACH, aim: 'point',
-        desc: 'Plants a cursed banner up to 10 m away for 5s. Foes within 3 m of it take 7 damage every 0.5s.',
+        desc: 'Plants a cursed banner up to 10 m away for 5s. Foes within 3 m of it take 14 damage every 0.5s.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, BANNER_REACH), r = G.m(3); h.facing = angleTo(h, p.x, p.y); h.playCast(0);
           plantBanner(h, p.x, p.y, 'doom', r, 5, pulse(0.5, () => {
-            for (const e of G.foesInRadius(h.team, p.x, p.y, r)) G.hurt(h, e, 7, { color: '#ff6a5a' });
+            for (const e of G.foesInRadius(h.team, p.x, p.y, r)) G.hurt(h, e, 14, { color: '#ff6a5a' });
             G.addFx('ring', { x: p.x, y: p.y, r0: 20, r1: r, dur: 0.3, color: 0xff4a3a });
           }));
           return true;
         } },
       { key: 'w', name: 'Banner of Courage', icon: '⚑', cooldown: 16, range: BANNER_REACH, aim: 'point',
-        desc: 'Plants a war banner up to 10 m away for 8s. Allies within 6 m of it deal 20% more attack damage.',
+        desc: 'Plants a war banner up to 10 m away for 8s. Allies within 6 m of it deal 40% more attack damage.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, BANNER_REACH), r = G.m(6); h.facing = angleTo(h, p.x, p.y); h.playCast(1);
           plantBanner(h, p.x, p.y, 'courage', r, 8, pulse(0.25, () => {
-            for (const a of alliesNear(h, p.x, p.y, r)) G.addBuff(a, 'courage', 0.35, { dmg: 0.2 });
+            for (const a of alliesNear(h, p.x, p.y, r)) G.addBuff(a, 'courage', 0.35, { dmg: 0.4 });
           }));
           return true;
         } },
       { key: 'e', name: 'Unbreakable Wall', icon: '⛊', cooldown: 7, range: 200, aim: 'dir',
-        desc: 'Drives the shield into every foe in front of her within 200: 70 damage and a 0.5s stun. Passive — Charlie: her squire guards her, stepping between her and enemies.',
+        desc: 'Drives the shield into every foe in front of her within 200: 140 damage and a 0.5s stun. Passive — Charlie: her squire guards her, stepping between her and enemies.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(2);
           G.after(0.12, () => {
-            for (const e of G.foesInCone(h.team, h.x, h.y, a, 200, 0.9)) { G.hurt(h, e, 70); G.stun(e, 0.5); }
+            for (const e of G.foesInCone(h.team, h.x, h.y, a, 200, 0.9)) { G.hurt(h, e, 140); G.stun(e, 0.5); }
             G.addFx('cone', { x: h.x, y: h.y, angle: a, r: 200, arc: 1.8, dur: 0.4, color: 0xffe08a });
           });
           return true;
@@ -139,7 +139,7 @@
     id: 'boneshaper', name: 'Boneshaper', lore: 'Aesther', role: 'Ranged',
     color: 0x8fe8a8, css: '#9ff0b8', r: 18, barH: 110,
     desc: 'A grave-robbing necromancer who raises skeletons (Doug and Doug, mostly), curses the living and rolls the dead into a great ball of bone.',
-    hp: 1200, speed: 168,
+    hp: 1200, speed: 225,
     basic: { damage: 75, range: G.m(8), cooldown: 1.15, ranged: true, projectile: 'boneShard', speed: 850, muzzle: 62, color: '#cfeed8' },
     passive: { name: 'Rally the Dead', icon: '☠', desc: 'Her skeletons and Bone Balls within 12 m of her take 30% less damage.' },
     init(h) { h.state.backAgain = 0; h.state.rallied = 0; },
@@ -169,7 +169,7 @@
     passiveText: h => (h.state.rallied ? '×' + h.state.rallied : ''),
     abilities: [
       { key: 'q', name: 'Doug & Doug', icon: '☗', cooldown: 12, range: 350, aim: 'point',
-        desc: `Raises five Skeleton warriors, every one of them Doug (70 HP, 15 damage each), that fight for ${SKELETON_LIFE}s.`,
+        desc: `Raises five Skeleton warriors, every one of them Doug (70 HP, 30 damage each), that fight for ${SKELETON_LIFE}s.`,
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 350); h.facing = angleTo(h, p.x, p.y); h.playCast(0);
           G.addFx('grave', { x: p.x, y: p.y, r: 70, dur: 1 });
@@ -180,7 +180,7 @@
           return true;
         } },
       { key: 'w', name: "Death's Curse", icon: '☁', cooldown: 10, range: G.m(15), aim: 'dir',
-        desc: 'Sends a dark cloud (2 m radius) drifting slowly 15 m forward. Every foe it touches takes 15 damage and is slowed 50% and attacks 50% slower for 4s.',
+        desc: 'Sends a dark cloud (2 m radius) drifting slowly 15 m forward. Every foe it touches takes 30 damage and is slowed 50% and attacks 50% slower for 4s.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(1);
           const len = G.m(15), speed = G.m(3);
@@ -192,7 +192,7 @@
               for (const e of G.foesInRadius(h.team, o.x, o.y, o.r)) {
                 if (o.hit.has(e)) continue;
                 o.hit.add(e);
-                G.hurt(h, e, 15, { color: '#b8a0d8' }); G.slow(e, 0.5, 4); G.addBuff(e, 'curse', 4, { atk: -0.5 });
+                G.hurt(h, e, 30, { color: '#b8a0d8' }); G.slow(e, 0.5, 4); G.addBuff(e, 'curse', 4, { atk: -0.5 });
               }
             } });
           return true;
@@ -207,7 +207,7 @@
           return true;
         } },
       { key: 'r', name: 'Bone Ball', icon: '◉', cooldown: 75, range: 300, aim: 'point', ult: true,
-        desc: 'ULTIMATE. Packs the dead into a great rolling Bone Ball (400 HP) that fights for 25s, hitting for 30% of its current health (at least 120). Every skeleton of hers it rolls within 1 m of is absorbed: +100 max health (up to 900) and heals 100.',
+        desc: 'ULTIMATE. Packs the dead into a great rolling Bone Ball (400 HP) that fights for 25s, hitting for 60% of its current health (at least 240). Every skeleton of hers it rolls within 1 m of is absorbed: +100 max health (up to 900) and heals 100.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 300); h.facing = angleTo(h, p.x, p.y); h.playCast(3);
           G.addFx('grave', { x: p.x, y: p.y, r: 120, dur: 1.2, big: true });
@@ -249,7 +249,7 @@
     id: 'deathwalker', name: 'Deathwalker', lore: 'Valrath', role: 'Melee',
     color: 0xa47cff, css: '#b28cff', r: 18, barH: 108,
     desc: 'A horned reaper who walks between shadows, leaving a pool of night behind every kill and growing deadlier with each.',
-    hp: 1350, speed: 180,
+    hp: 1350, speed: 225,
     basic: { damage: 75, range: 44, cooldown: 1.1, impact: 0.14 },
     passive: { name: 'Night Comes', icon: '☾', desc: `Every enemy it kills leaves a shadow (${SHADOW_R / G.UNITS_PER_METER} m radius) for ${SHADOW_LIFE}s, up to ${MAX_SHADOWS} at a time; a new one replaces the oldest. Deals 5% more damage for each active shadow.` },
     init(h) { h.state.dark = 0; h.state.inDark = false; },
@@ -270,23 +270,23 @@
     passiveText: h => String(shadowsOf(h).length || ''),
     abilities: [
       { key: 'q', name: 'Shadow Step', icon: '◐', cooldown: 8, range: STEP_RANGE, aim: 'point',
-        desc: `Steps through the dark up to 7 m and leaves a shadow where it lands, dealing 50 damage to every foe in it.`,
+        desc: `Steps through the dark up to 7 m and leaves a shadow where it lands, dealing 100 damage to every foe in it.`,
         cast(h, tx, ty) {
           const spot = G.openSpot(h, tx, ty, STEP_RANGE);
           if (!spot) return false;
           h.playCast(0);
           teleport(h, spot.x, spot.y, 0xb28cff);
           placeShadow(h, spot.x, spot.y);
-          for (const e of G.foesInRadius(h.team, spot.x, spot.y, SHADOW_R)) G.hurt(h, e, 50, { color: '#b28cff' });
+          for (const e of G.foesInRadius(h.team, spot.x, spot.y, SHADOW_R)) G.hurt(h, e, 100, { color: '#b28cff' });
           return true;
         } },
       { key: 'w', name: 'Darkness Grows', icon: '●', cooldown: 10, range: 0, aim: 'self',
-        desc: 'Every foe standing in one of its shadows is stunned for 0.5s and takes 50 damage.',
+        desc: 'Every foe standing in one of its shadows is stunned for 0.5s and takes 100 damage.',
         cast(h) {
           const shadows = shadowsOf(h);
           if (!shadows.length) return false;
           h.playCast(1);
-          for (const e of foesInShadows(h)) { G.hurt(h, e, 50, { color: '#b28cff' }); G.stun(e, 0.5); }
+          for (const e of foesInShadows(h)) { G.hurt(h, e, 100, { color: '#b28cff' }); G.stun(e, 0.5); }
           for (const s of shadows) {
             G.addFx('ring', { x: s.x, y: s.y, r0: s.r, r1: 10, dur: 0.4, color: 0xb28cff });
             G.burst(s.x, s.y, '#6a4aa8', 16, 160);
@@ -303,7 +303,7 @@
           return true;
         } },
       { key: 'r', name: 'Night Falls', icon: '✠', cooldown: 60, range: NIGHT_FALLS_RANGE, aim: 'foe', ult: true,
-        desc: 'ULTIMATE. Gathers every one of its shadows into a foe within 8 m, dealing 60 damage for each shadow consumed.',
+        desc: 'ULTIMATE. Gathers every one of its shadows into a foe within 8 m, dealing 120 damage for each shadow consumed.',
         cast(h, tx, ty) {
           const shadows = shadowsOf(h);
           if (!shadows.length) return false;
@@ -314,7 +314,7 @@
             s.dead = true;
             G.addFx('soul', { x: s.x, y: s.y, to: t, dur: 0.5, color: 0x9a6cff });
           }
-          const dmg = 60 * shadows.length;
+          const dmg = 120 * shadows.length;
           G.after(0.5, () => {
             if (t.dead) return;
             G.hurt(h, t, dmg, { color: '#d0b8ff' });
@@ -357,7 +357,7 @@
       return Math.abs(rx * c + ry * s) <= SWARM_W / 2 + r && Math.abs(-rx * s + ry * c) <= SWARM_LEN / 2 + r;
     });
   }
-  const CARAPACE_TIME = 5, CARAPACE_REFLECT = 0.4;
+  const CARAPACE_TIME = 5, CARAPACE_REFLECT = 0.8;
   const RUSH_REACH = G.m(12);
   // Shared with the cast preview and the AI.
   G.geminate = { CRESCENT, crescentFoes, swarmSpot, swarmFoes, SWARM_LEN, SWARM_W, TAILSPIN_R };
@@ -372,7 +372,7 @@
     id: 'geminate', name: 'Geminate', lore: 'Harrower', role: 'Ranged / Melee',
     color: 0xff6fd0, css: '#ff7ad6', r: 18, barH: 108,
     desc: 'A Harrower: a single mind spread through a robed swarm of insects, which can loose the swarm at range or harden into a clawed, tail-whipping carapace.',
-    hp: 1350, speed: 185, startForm: 'ranged',
+    hp: 1350, speed: 225, startForm: 'ranged',
     basic: GEM_RANGED,
     formBasic: h => (h.form === 'melee' ? GEM_MELEE : GEM_RANGED),
     passive: { name: 'In Form', icon: '☯', desc: 'Ranged form deals 20% more damage. Melee form takes 15% less damage.' },
@@ -390,11 +390,11 @@
     passiveText: h => (h.form === 'melee' ? (h.state.carapace > 0 ? 'Melee ◈' : 'Melee') : 'Ranged'),
     abilities: [
       { key: 'q', name: 'Drag Down / Tailspin', icon: '☾', cooldown: 6, range: G.m(8), aim: 'dir',
-        desc: 'Ranged form — Drag Down: the swarm rakes a crescent reaching 8 m in front of it, 70 damage to every foe inside. Melee form — Tailspin: whips its tail around, 85 damage to every foe within 1.5 m.',
+        desc: 'Ranged form — Drag Down: the swarm rakes a crescent reaching 8 m in front of it, 140 damage to every foe inside. Melee form — Tailspin: whips its tail around, 170 damage to every foe within 1.5 m.',
         cast(h, tx, ty) {
           h.playCast(0);
           if (h.form === 'melee') {
-            for (const e of G.foesInRadius(h.team, h.x, h.y, TAILSPIN_R)) G.hurt(h, e, 85, { color: GEM_PINK });
+            for (const e of G.foesInRadius(h.team, h.x, h.y, TAILSPIN_R)) G.hurt(h, e, 170, { color: GEM_PINK });
             G.addFx('slash', { x: h.x, y: h.y, angle: h.facing, arc: Math.PI * 2, r: TAILSPIN_R + 20, dur: 0.4, color: 0xff6fd0 });
             G.addFx('ring', { x: h.x, y: h.y, r0: 10, r1: TAILSPIN_R + 10, dur: 0.3, color: 0xa46cff });
             return true;
@@ -402,13 +402,13 @@
           const a = angleTo(h, tx, ty); h.facing = a;
           G.after(0.15, () => {
             if (h.dead) return;
-            for (const e of crescentFoes(h, a)) G.hurt(h, e, 70, { color: GEM_PINK });
+            for (const e of crescentFoes(h, a)) G.hurt(h, e, 140, { color: GEM_PINK });
             G.addFx('crescent', Object.assign({ x: h.x, y: h.y, angle: a, dur: 0.55 }, CRESCENT));
           });
           return true;
         } },
       { key: 'w', name: 'Swarm / Tough Carapace', icon: '⁂', cooldown: 12, range: SWARM_MAX, aim: 'point',
-        desc: `Ranged form — Swarm: sends the swarm onto a 4 m × 2 m patch 7 to 12 m away: 50 damage and poison for ${GEM_POISON}s to every foe in it (every hit on a poisoned foe deals extra damage: +10 from a hero, +2 from a soldier). Melee form — Tough Carapace: for ${CARAPACE_TIME}s, 40% of all damage it takes is reflected back at the attacker.`,
+        desc: `Ranged form — Swarm: sends the swarm onto a 4 m × 2 m patch 7 to 12 m away: 100 damage and poison for ${GEM_POISON}s to every foe in it (every hit on a poisoned foe deals extra damage: +20 from a hero, +4 from a soldier). Melee form — Tough Carapace: for ${CARAPACE_TIME}s, 80% of all damage it takes is reflected back at the attacker.`,
         cast(h, tx, ty) {
           if (h.form === 'melee') {
             h.playCast(1);
@@ -422,7 +422,7 @@
           const p = swarmSpot(h, tx, ty); h.facing = p.a; h.playCast(1);
           G.addFx('swarm', { x: p.x, y: p.y, x0: h.x, y0: h.y, angle: p.a, len: SWARM_LEN, w: SWARM_W, dur: 1.2 });
           G.after(0.35, () => {
-            for (const e of swarmFoes(h, p)) { G.hurt(h, e, 50, { color: '#d890ff' }); G.mark(e, 'poison', GEM_POISON); }
+            for (const e of swarmFoes(h, p)) { G.hurt(h, e, 100, { color: '#d890ff' }); G.mark(e, 'poison', GEM_POISON); }
           });
           return true;
         } },
@@ -442,7 +442,7 @@
           h.facing = a; h.playCast(3); h.attackTarget = null; h.target = null;
           G.burst(h.x, h.y, GEM_VIOLET, 16, 180);
           h.dash = { tx: spot.x, ty: spot.y, speed: 1400, width: 30, hit: new Set(), trail: GEM_PINK,
-            onPass(e) { G.hurt(h, e, 90, { color: GEM_PINK }); G.stun(e, 1); G.burst(e.x, e.y, GEM_PINK, 10, 160); },
+            onPass(e) { G.hurt(h, e, 180, { color: GEM_PINK }); G.stun(e, 1); G.burst(e.x, e.y, GEM_PINK, 10, 160); },
             onArrive() { G.addFx('ring', { x: h.x, y: h.y, r0: 10, r1: 90, dur: 0.35, color: 0xff6fd0 }); } };
           return true;
         } }
@@ -468,7 +468,7 @@
     id: 'blinkblade', name: 'Blinkblade', lore: 'Quatryl', role: 'Melee',
     color: 0x7fd8ff, css: '#8fdcff', r: 16, barH: 90,
     desc: 'A tiny inventor with a time-folding engine on her back and a blade that is never quite where you look.',
-    hp: 1350, speed: 205,
+    hp: 1350, speed: 225,
     basic: { damage: 75, range: 26, cooldown: 0.85, impact: 0.08 },
     passive: { name: 'Charge Up', icon: '⚡', desc: `Builds ${CHARGE_RATE} charge per second (up to ${CHARGE_MAX}). Using any ability speeds her up, burning ${CHARGE_DRAIN} charge per second until it runs out: Poison Dagger and Stab Them All recharge twice as fast, +80% move speed and +20% basic attack damage.` },
     init(h) { h.state.charge = 0; h.state.speeding = false; h.state.cutting = 0; h.state.invis = 0; h.state.ambush = 0; h.invisible = false; },
@@ -495,24 +495,24 @@
         G.addFx('ring', { x: h.x, y: h.y, r0: 10, r1: 90, dur: 0.3, color: 0x8fdcff });
       }
     },
-    // Now You See Me: the first basic attack after vanishing hits for 150 and splashes 50 around the target.
+    // Now You See Me: the first basic attack after vanishing hits for 300 and splashes 100 around the target.
     onBasicHit(h, t, dmg) {
       reveal(h);
       if (!(h.state.ambush > 0)) return dmg;
       h.state.ambush = 0;
-      for (const e of G.foesInRadius(h.team, t.x, t.y, AMBUSH_SPLASH, { buildings: false })) if (e !== t) G.hurt(h, e, 50);
+      for (const e of G.foesInRadius(h.team, t.x, t.y, AMBUSH_SPLASH, { buildings: false })) if (e !== t) G.hurt(h, e, 100);
       G.addFx('ring', { x: t.x, y: t.y, r0: 10, r1: AMBUSH_SPLASH + 20, dur: 0.35, color: 0xcff4ff });
       G.addFx('slash', { x: t.x, y: t.y, angle: h.facing, arc: 2.4, r: 70, dur: 0.3, color: 0xcff4ff });
-      return 150 * h.buffMul('dmg');
+      return 300 * h.buffMul('dmg');
     },
     passiveText: h => Math.floor(h.state.charge || 0) + (h.state.speeding ? '»' : ''),
     abilities: [
       { key: 'q', name: 'Poison Dagger', icon: '🗡', cooldown: 6, range: DAGGER_REACH, aim: 'dir',
-        desc: `Slashes a cone in front of her (5 m): 40 damage and poison for ${POISON_TIME}s. Every hit on a poisoned foe deals extra damage: +10 from a hero, +2 from a soldier.`,
+        desc: `Slashes a cone in front of her (5 m): 80 damage and poison for ${POISON_TIME}s. Every hit on a poisoned foe deals extra damage: +20 from a hero, +4 from a soldier.`,
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(0); h.swing = 1;
           for (const e of G.foesInCone(h.team, h.x, h.y, a, DAGGER_REACH, 0.7)) {
-            G.hurt(h, e, 40, { color: '#9fe870' });
+            G.hurt(h, e, 80, { color: '#9fe870' });
             G.mark(e, 'poison', POISON_TIME);
           }
           G.addFx('cone', { x: h.x, y: h.y, angle: a, r: DAGGER_REACH, arc: 1.4, dur: 0.35, color: 0x8fe05a });
@@ -520,7 +520,7 @@
           return true;
         } },
       { key: 'w', name: 'Stab Them All', icon: '⚡', cooldown: 9, range: STAB_REACH, aim: 'self',
-        desc: 'Blinks to the nearest foe within 8 m and strikes for 50 damage, then on to the next nearest: three strikes, 0.1s apart. Ends early when no new foe is within 8 m.',
+        desc: 'Blinks to the nearest foe within 8 m and strikes for 100 damage, then on to the next nearest: three strikes, 0.1s apart. Ends early when no new foe is within 8 m.',
         cast(h) {
           const hit = new Set();
           const next = () => {
@@ -546,7 +546,7 @@
             h.x = nx; h.y = ny; G.map.resolve(h);
             h.facing = Math.atan2(t.y - h.y, t.x - h.x);
             h.swing = 1; h.swingAlt = !h.swingAlt;
-            G.hurt(h, t, 50);
+            G.hurt(h, t, 100);
             G.addFx('slash', { x: t.x, y: t.y, angle: h.facing, arc: 2, r: 60, dur: 0.2, color: 0xcff4ff });
           });
           return true;
@@ -561,7 +561,7 @@
           return true;
         } },
       { key: 'r', name: 'Now You See Me', icon: '◌', cooldown: 60, range: 0, aim: 'self', ult: true,
-        desc: `ULTIMATE. Turns invisible for up to ${INVIS_TIME}s: enemies cannot see or target her. Attacking or using an ability ends it. Her first basic attack after vanishing deals 150 damage, plus 50 to every other foe within 1 m of the target.`,
+        desc: `ULTIMATE. Turns invisible for up to ${INVIS_TIME}s: enemies cannot see or target her. Attacking or using an ability ends it. Her first basic attack after vanishing deals 300 damage, plus 100 to every other foe within 1 m of the target.`,
         cast(h) {
           h.playCast(3);
           h.invisible = true; h.state.invis = INVIS_TIME; h.state.ambush = INVIS_TIME;
@@ -577,14 +577,14 @@
   // 6. Crushing Tide — Lurker shell-crusher (melee tank)
   // =====================================================================================
   const RIPTIDE_TIME = 7, RIPTIDE_R = G.m(3);
-  const SHELL_TIME = 4, SHELL_REFLECT = 0.3;
+  const SHELL_TIME = 4, SHELL_REFLECT = 0.6;
   const REJUV_WAIT = 4, REJUV_HEAL = 20;
   const EBB_R = G.m(8), FLOW_R = G.m(5);
   const CRUSHING_TIDE = {
     id: 'crushingtide', name: 'Crushing Tide', lore: 'Lurker', role: 'Melee',
     color: 0x3fc8d8, css: '#5fd8e8', r: 23, barH: 98,
     desc: 'A colossal crab-knight of the deep who breaks lines with its crusher claw and drowns armies in the tide.',
-    hp: 1500, speed: 160,
+    hp: 1500, speed: 225,
     basic: { damage: 75, range: 34, cooldown: 1.3, impact: 0.2 },
     passive: { name: 'Rejuvenate', icon: '❀', desc: `After standing in the same spot for ${REJUV_WAIT}s, heals ${REJUV_HEAL} HP per second until it moves.` },
     init(h) { h.state.stillT = 0; h.state.stillX = h.x; h.state.stillY = h.y; h.state.riptide = 0; h.state.shells = 0; },
@@ -609,13 +609,13 @@
     passiveText: h => (!G.passiveOn(h) ? '' : h.state.stillT >= REJUV_WAIT ? '+' : Math.ceil(REJUV_WAIT - h.state.stillT) + 's'),
     abilities: [
       { key: 'q', name: 'Riptide', icon: '♋', cooldown: 10, range: 0, aim: 'self',
-        desc: `For ${RIPTIDE_TIME}s, a churning current swirls around it: every foe within 3 m takes 8 damage every 0.5s.`,
+        desc: `For ${RIPTIDE_TIME}s, a churning current swirls around it: every foe within 3 m takes 16 damage every 0.5s.`,
         cast(h) {
           h.playCast(0);
           h.state.riptide = RIPTIDE_TIME;
           G.repeat(RIPTIDE_TIME * 2, 0.5, () => {
             if (h.dead) return;
-            for (const e of G.foesInRadius(h.team, h.x, h.y, RIPTIDE_R)) G.hurt(h, e, 8, { color: '#5fe0e8' });
+            for (const e of G.foesInRadius(h.team, h.x, h.y, RIPTIDE_R)) G.hurt(h, e, 16, { color: '#5fe0e8' });
             G.addFx('ring', { x: h.x, y: h.y, r0: RIPTIDE_R, r1: h.r + 10, dur: 0.4, color: 0x5fe0e8 });
           });
           return true;
@@ -641,7 +641,7 @@
           return true;
         } },
       { key: 'r', name: 'Ebb and Flow', icon: '🌊', cooldown: 70, range: EBB_R, aim: 'self', ult: true,
-        desc: 'ULTIMATE. Draws every foe within 8 m 5 m closer, crashes down on them all for 100 damage, then hurls every foe within 5 m 5 m away.',
+        desc: 'ULTIMATE. Draws every foe within 8 m 5 m closer, crashes down on them all for 200 damage, then hurls every foe within 5 m 5 m away.',
         cast(h) {
           const foes = G.foesInRadius(h.team, h.x, h.y, EBB_R);
           if (!foes.length) return false;
@@ -651,7 +651,7 @@
           for (const e of foes) G.knock(e, h.x, h.y, -G.m(5), 0.4);
           G.after(0.45, () => {
             if (h.dead) return;
-            for (const e of foes) G.hurt(h, e, 100, { color: '#9fefff' });
+            for (const e of foes) G.hurt(h, e, 200, { color: '#9fefff' });
             G.addFx('pillar', { x: h.x, y: h.y, dur: 0.5, color: 0x5fd8e8, r: 70 });
             G.burst(h.x, h.y, '#9fefff', 40, 320);
             // Flow: the wave breaks outward.
@@ -679,7 +679,7 @@
         const e = G.foesInRadius(h.team, o.x, o.y, o.r, { buildings: false })[0];
         if (!e) return;
         o.sprung = 0.001;
-        G.hurt(h, e, 90); G.root(e, 2);
+        G.hurt(h, e, 180); G.root(e, 2);
         G.burst(o.x, o.y, '#d8b060', 18, 180);
       } });
   }
@@ -687,21 +687,21 @@
     id: 'trapper', name: 'Trapper', lore: 'Vermling', role: 'Ranged',
     color: 0xd8b060, css: '#d8b060', r: 16, barH: 90,
     desc: 'A wiry rat-folk hunter with a repeating crossbow, a harpoon gun and more steel jaws than sense.',
-    hp: 1200, speed: 188,
+    hp: 1200, speed: 225,
     basic: { damage: 75, range: 430, cooldown: 1.0, ranged: true, projectile: 'quarrel', speed: 1150, muzzle: 34, color: '#e8d8a0' },
     passive: { name: 'Predator', icon: '⌖', desc: 'Basic attacks deal 50% more damage to rooted, stunned or slowed foes.' },
     onBasicHit(h, t, dmg) { return t.impaired && G.passiveOn(h) ? dmg * 1.5 : dmg; },
     passiveText: h => String(G.fx.filter(o => o.kind === 'trap' && o.owner === h && !o.sprung).length || ''),
     abilities: [
       { key: 'q', name: 'Harpoon', icon: '⚓', cooldown: 7, range: 620, aim: 'dir',
-        desc: 'Fires a chained harpoon 620 forward. The first foe hit takes 55 damage and is reeled in to the Trapper.',
+        desc: 'Fires a chained harpoon 620 forward. The first foe hit takes 110 damage and is reeled in to the Trapper.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(0);
           const chain = G.addFx('chain', { a: h, dur: 2 });
           const p = G.spawnProjectile({ x: h.x, y: h.y, h: 36, angle: a, speed: 1250, range: 620, r: 12, team: h.team, color: '#c8c8c8',
             style: 'harpoon', trail: null,
             onHit(e) {
-              G.hurt(h, e, 55);
+              G.hurt(h, e, 110);
               chain.b = e; chain.dur = chain.t + 0.45;
               if (isUnit(e)) { const d = G.dist(h.x, h.y, e.x, e.y) - h.r - e.r - 24; G.knock(e, h.x, h.y, -Math.max(0, d), 0.4); G.stun(e, 0.4); }
             },
@@ -710,32 +710,32 @@
           return true;
         } },
       { key: 'w', name: 'Bear Trap', icon: '⊓', cooldown: 2.5, range: 340, aim: 'point',
-        desc: 'Sets a hidden bear trap (up to 8 out, each lasting 45s). It arms after 0.8s; the first foe to step on it takes 90 damage and is rooted for 2s.',
+        desc: 'Sets a hidden bear trap (up to 8 out, each lasting 45s). It arms after 0.8s; the first foe to step on it takes 180 damage and is rooted for 2s.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 340); h.facing = angleTo(h, p.x, p.y); h.playCast(1);
           placeTrap(h, p.x, p.y, 0.8, 45);
           return true;
         } },
       { key: 'e', name: 'Snare Net', icon: '⌗', cooldown: 11, range: 440, aim: 'point',
-        desc: 'Lobs a weighted net that bursts open over a 130 radius: 30 damage and roots every foe caught for 1.5s. Passive — Predator: +50% basic damage against rooted, stunned or slowed foes.',
+        desc: 'Lobs a weighted net that bursts open over a 130 radius: 60 damage and roots every foe caught for 1.5s. Passive — Predator: +50% basic damage against rooted, stunned or slowed foes.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 440); h.facing = angleTo(h, p.x, p.y); h.playCast(2);
           G.addFx('lob', { x0: h.x, y0: h.y, x: p.x, y: p.y, dur: 0.45, style: 'net',
             end() {
-              for (const e of G.foesInRadius(h.team, p.x, p.y, 130)) { G.hurt(h, e, 30); G.root(e, 1.5); }
+              for (const e of G.foesInRadius(h.team, p.x, p.y, 130)) { G.hurt(h, e, 60); G.root(e, 1.5); }
               G.addFx('net', { x: p.x, y: p.y, r: 130, dur: 1.6 });
             } });
           return true;
         } },
       { key: 'r', name: 'Killing Field', icon: '✣', cooldown: 60, range: 500, aim: 'point', ult: true,
-        desc: 'ULTIMATE. Scatters 8 armed bear traps in a 210 ring for 15s and a spike burst in the middle: 80 damage and a 40% slow for 2s to every foe inside.',
+        desc: 'ULTIMATE. Scatters 8 armed bear traps in a 210 ring for 15s and a spike burst in the middle: 160 damage and a 40% slow for 2s to every foe inside.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 500); h.facing = angleTo(h, p.x, p.y); h.playCast(3);
           for (let i = 0; i < 8; i++) {
             const a = i / 8 * Math.PI * 2;
             G.after(i * 0.04, () => placeTrap(h, p.x + Math.cos(a) * 210, p.y + Math.sin(a) * 210, 0, 15));
           }
-          for (const e of G.foesInRadius(h.team, p.x, p.y, 210)) { G.hurt(h, e, 80); G.slow(e, 0.4, 2); }
+          for (const e of G.foesInRadius(h.team, p.x, p.y, 210)) { G.hurt(h, e, 160); G.slow(e, 0.4, 2); }
           G.addFx('spikes', { x: p.x, y: p.y, r: 210, dur: 0.9 });
           G.addFx('ring', { x: p.x, y: p.y, r0: 20, r1: 230, dur: 0.5, color: 0xd8b060 });
           return true;
@@ -747,7 +747,7 @@
   // 8. Pyroclast — Savvas magma elemental (ranged)
   // =====================================================================================
   function magmaBlast(h, x, y) {
-    for (const e of G.foesInRadius(h.team, x, y, 100)) G.hurt(h, e, 65);
+    for (const e of G.foesInRadius(h.team, x, y, 100)) G.hurt(h, e, 130);
     G.addFx('ring', { x, y, r0: 10, r1: 110, dur: 0.35, color: 0xff7a30 });
     G.burst(x, y, '#ffb050', 26, 240);
   }
@@ -755,13 +755,13 @@
     id: 'pyroclast', name: 'Pyroclast', lore: 'Savvas', role: 'Ranged',
     color: 0xff6a20, css: '#ff8a40', r: 18, barH: 107,
     desc: 'A living shard of the world’s molten heart, cracked obsidian over a furnace that never cools.',
-    hp: 1350, speed: 175,
+    hp: 1350, speed: 225,
     basic: { damage: 75, range: 400, cooldown: 1.2, ranged: true, projectile: 'ember', speed: 850, muzzle: 52, color: '#ff9a40' },
     passive: { name: 'Kindling', icon: '♨', desc: "All of the Pyroclast's damage sets foes ablaze: 6 damage per second for 3s (refreshes)." },
     afterDamage(h, t) { if (G.passiveOn(h)) G.burn(t, 6, 3, 'kindling', '#ff9a40', h); },
     abilities: [
       { key: 'q', name: 'Magma Bolt', icon: '☄', cooldown: 4, range: 650, aim: 'dir',
-        desc: 'Hurls a glob of magma 650 forward that bursts on the first foe (or at the end of its flight) for 65 damage in a 100 radius.',
+        desc: 'Hurls a glob of magma 650 forward that bursts on the first foe (or at the end of its flight) for 130 damage in a 100 radius.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(0);
           G.spawnProjectile({ x: h.x, y: h.y, h: 50, angle: a, speed: 900, range: 650, r: 14, team: h.team, color: '#ff8a30',
@@ -769,7 +769,7 @@
           return true;
         } },
       { key: 'w', name: 'Wall of Fire', icon: '▤', cooldown: 12, range: 420, aim: 'point',
-        desc: 'Raises a 320-long wall of fire across the target point for 5s. Foes in it burn for 40 damage per second.',
+        desc: 'Raises a 320-long wall of fire across the target point for 5s. Foes in it burn for 80 damage per second.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 420), a = angleTo(h, p.x, p.y); h.facing = a; h.playCast(1);
           const nx = -Math.sin(a) * 160, ny = Math.cos(a) * 160;
@@ -777,27 +777,27 @@
           G.addFx('firewall', { x: p.x, y: p.y, x1, y1, x2, y2, w: 60, dur: 5,
             tick: pulse(0.25, () => {
               for (const e of G.foesInLine(h.team, x1, y1, x2, y2, 60)) {
-                if (isUnit(e)) G.burn(e, 40, 0.5, 'firewall', '#ff7a30', h); else G.hurt(h, e, 10);
+                if (isUnit(e)) G.burn(e, 80, 0.5, 'firewall', '#ff7a30', h); else G.hurt(h, e, 20);
               }
             }) });
           return true;
         } },
       { key: 'e', name: 'Searing Breath', icon: '♆', cooldown: 9, range: 270, aim: 'dir',
-        desc: 'Exhales a cone of white-hot fire (270 reach): 55 damage, then 14 burn damage per second for 4s. Passive — Kindling: all damage burns foes for 6 per second over 3s.',
+        desc: 'Exhales a cone of white-hot fire (270 reach): 110 damage, then 28 burn damage per second for 4s. Passive — Kindling: all damage burns foes for 6 per second over 3s.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(2);
-          for (const e of G.foesInCone(h.team, h.x, h.y, a, 270, 0.62)) { G.hurt(h, e, 55); G.burn(e, 14, 4, 'sear', '#ffd080', h); }
+          for (const e of G.foesInCone(h.team, h.x, h.y, a, 270, 0.62)) { G.hurt(h, e, 110); G.burn(e, 28, 4, 'sear', '#ffd080', h); }
           G.addFx('cone', { x: h.x, y: h.y, angle: a, r: 270, arc: 1.24, dur: 0.5, color: 0xff7a30, fire: true });
           return true;
         } },
       { key: 'r', name: 'Eruption', icon: '🌋', cooldown: 75, range: 650, aim: 'point', ult: true,
-        desc: 'ULTIMATE. Splits the ground into a 240-radius magma field for 4.5s (25 burn damage per second) while 12 meteors crash down over it, each dealing 70 damage in a 90 radius.',
+        desc: 'ULTIMATE. Splits the ground into a 240-radius magma field for 4.5s (50 burn damage per second) while 12 meteors crash down over it, each dealing 140 damage in a 90 radius.',
         cast(h, tx, ty) {
           const p = G.clampReach(h, tx, ty, 650); h.facing = angleTo(h, p.x, p.y); h.playCast(3);
           G.addFx('magma', { x: p.x, y: p.y, r: 240, dur: 4.5,
             tick: pulse(0.25, () => {
               for (const e of G.foesInRadius(h.team, p.x, p.y, 240)) {
-                if (isUnit(e)) G.burn(e, 25, 0.4, 'magma', '#ff7a30', h); else G.hurt(h, e, 6);
+                if (isUnit(e)) G.burn(e, 50, 0.4, 'magma', '#ff7a30', h); else G.hurt(h, e, 12);
               }
             }) });
           G.repeat(12, 0.2, () => {
@@ -805,7 +805,7 @@
             const mx = p.x + Math.cos(a) * d, my = p.y + Math.sin(a) * d;
             G.addFx('meteor', { x: mx, y: my, dur: 0.55,
               end() {
-                for (const e of G.foesInRadius(h.team, mx, my, 90)) G.hurt(h, e, 70);
+                for (const e of G.foesInRadius(h.team, mx, my, 90)) G.hurt(h, e, 140);
                 G.addFx('ring', { x: mx, y: my, r0: 10, r1: 100, dur: 0.35, color: 0xff7a30 });
                 G.burst(mx, my, '#ffb050', 22, 260);
               } });
@@ -827,7 +827,7 @@
     id: 'drifter', name: 'Drifter', lore: 'Inox', role: 'Melee',
     color: 0xf0c070, css: '#f0c070', r: 21, barH: 120,
     desc: 'A grizzled old Inox who should have retired years ago, still swinging a great two-handed hammer with a whole lifetime of road behind every blow.',
-    hp: 1500, speed: 168,
+    hp: 1500, speed: 225,
     basic: { damage: 75, range: 36, cooldown: 1.3, impact: 0.2 },
     passive: { name: 'Stack Up', icon: '⇈', desc: `Every basic attack adds a stack: +${STACK_STEP * 100}% attack speed and move speed each, up to +${STACK_MAX * STACK_STEP * 100}%. The stacks fall away after ${STACK_WAIT}s without attacking.` },
     init(h) { Object.assign(h.state, { stacks: 0, stackT: 0, crush: 0, crushT: 0, shock: 0, shockT: 0 }); },
@@ -843,15 +843,15 @@
     onBasicHit(h, t, dmg) {
       const s = h.state;
       if (G.passiveOn(h)) { s.stacks = Math.min(STACK_MAX, s.stacks + 1); s.stackT = STACK_WAIT; }
-      // Crushing Weight: double damage.
+      // Crushing Weight: quadruple damage.
       if (s.crush > 0) {
-        s.crush--; dmg *= 2;
+        s.crush--; dmg *= 4;
         G.addFx('ring', { x: t.x, y: t.y, r0: 10, r1: 60, dur: 0.3, color: 0xffb040 });
       }
       // Shockwave: half the blow ripples into every other foe around the target.
       if (s.shock > 0) {
         s.shock--;
-        for (const e of G.foesInRadius(h.team, t.x, t.y, SHOCK_R)) if (e !== t) G.hurt(h, e, dmg * 0.5);
+        for (const e of G.foesInRadius(h.team, t.x, t.y, SHOCK_R)) if (e !== t) G.hurt(h, e, dmg);
         G.addFx('ring', { x: t.x, y: t.y, r0: 10, r1: SHOCK_R + 20, dur: 0.35, color: 0xd8c8a8 });
         G.burst(t.x, t.y, '#d8c8a8', 12, 160);
       }
@@ -861,19 +861,19 @@
       h.state.crush ? '×' + h.state.crush : '', h.state.shock ? '≋' + h.state.shock : ''].filter(Boolean).join(' '),
     abilities: [
       { key: 'q', name: 'Destructive Fury', icon: '⚒', cooldown: 7, range: FURY_REACH, aim: 'dir',
-        desc: 'Brings the hammer down so hard the ground splits: 75 damage to every foe in a 7 m cone in front of him.',
+        desc: 'Brings the hammer down so hard the ground splits: 150 damage to every foe in a 7 m cone in front of him.',
         cast(h, tx, ty) {
           const a = angleTo(h, tx, ty); h.facing = a; h.playCast(0); h.swing = 1;
           G.after(0.15, () => {
             if (h.dead) return;
-            for (const e of G.foesInCone(h.team, h.x, h.y, a, FURY_REACH, FURY_HALF)) G.hurt(h, e, 75);
+            for (const e of G.foesInCone(h.team, h.x, h.y, a, FURY_REACH, FURY_HALF)) G.hurt(h, e, 150);
             G.addFx('cone', { x: h.x, y: h.y, angle: a, r: FURY_REACH, arc: FURY_HALF * 2, dur: 0.45, color: 0xf0c070 });
             G.burst(h.x + Math.cos(a) * 80, h.y + Math.sin(a) * 80, '#c8a878', 24, 260);
           });
           return true;
         } },
       { key: 'w', name: 'Crushing Weight', icon: '⬇', cooldown: 12, range: 0, aim: 'self',
-        desc: `His next ${EMPOWER_HITS} basic attacks deal double damage. Ends after ${EMPOWER_TIME}s if they are not all used.`,
+        desc: `His next ${EMPOWER_HITS} basic attacks deal quadruple damage. Ends after ${EMPOWER_TIME}s if they are not all used.`,
         cast(h) {
           h.playCast(1);
           h.state.crush = EMPOWER_HITS; h.state.crushT = EMPOWER_TIME;
@@ -882,7 +882,7 @@
           return true;
         } },
       { key: 'e', name: 'Shockwave', icon: '≋', cooldown: 12, range: 0, aim: 'self',
-        desc: `His next ${EMPOWER_HITS} basic attacks also deal 50% of their damage to every other foe within 1 m of the target. Ends after ${EMPOWER_TIME}s. Passive — Stack Up: each basic attack gives +${STACK_STEP * 100}% attack and move speed (max +${STACK_MAX * STACK_STEP * 100}%), lost after ${STACK_WAIT}s without attacking.`,
+        desc: `His next ${EMPOWER_HITS} basic attacks also deal 100% of their damage to every other foe within 1 m of the target. Ends after ${EMPOWER_TIME}s. Passive — Stack Up: each basic attack gives +${STACK_STEP * 100}% attack and move speed (max +${STACK_MAX * STACK_STEP * 100}%), lost after ${STACK_WAIT}s without attacking.`,
         cast(h) {
           h.playCast(2);
           h.state.shock = EMPOWER_HITS; h.state.shockT = EMPOWER_TIME;
@@ -890,14 +890,14 @@
           return true;
         } },
       { key: 'r', name: 'Against All Odds', icon: '⤒', cooldown: 60, range: ODDS_REACH, aim: 'point', ult: true,
-        desc: 'ULTIMATE. Leaps up to 12 m and lands with a crushing thud: 200 damage to every foe within a 4 m wide circle.',
+        desc: 'ULTIMATE. Leaps up to 12 m and lands with a crushing thud: 400 damage to every foe within a 4 m wide circle.',
         cast(h, tx, ty) {
           const spot = G.openSpot(h, tx, ty, ODDS_REACH) || { x: h.x, y: h.y };
           h.playCast(3); h.attackTarget = null; h.target = null;
           G.burst(h.x, h.y, '#c8a878', 14, 160);
           h.dash = { tx: spot.x, ty: spot.y, speed: 950, arc: 140, trail: '#f0c070',
             onArrive() {
-              for (const e of G.foesInRadius(h.team, h.x, h.y, ODDS_R)) G.hurt(h, e, 200);
+              for (const e of G.foesInRadius(h.team, h.x, h.y, ODDS_R)) G.hurt(h, e, 400);
               G.addFx('ring', { x: h.x, y: h.y, r0: 20, r1: ODDS_R + 30, dur: 0.45, color: 0xf0c070 });
               G.addFx('ring', { x: h.x, y: h.y, r0: 10, r1: ODDS_R * 1.8, dur: 0.6, color: 0xc8a878 });
               G.burst(h.x, h.y, '#c8a878', 40, 320);
